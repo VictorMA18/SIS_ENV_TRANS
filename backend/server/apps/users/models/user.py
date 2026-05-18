@@ -5,7 +5,6 @@ from django.db import models
 
 from common.enums.user import UserRole
 
-
 class UserManager(BaseUserManager):
   """
   Manager personalizado para el modelo User.
@@ -37,7 +36,7 @@ class UserManager(BaseUserManager):
     user.save(using=self._db)
     return user
 
-  def create_user(self, email, full_name, role, password=None, **extra_fields):
+  def create_user(self, email, full_name, role, password, **extra_fields):
     extra_fields.setdefault('is_active',   True)
     extra_fields.setdefault('is_verified', False)
     return self._create(email, full_name, role, password, **extra_fields)
@@ -56,21 +55,16 @@ class UserManager(BaseUserManager):
     extra_fields.setdefault('is_active',   True)
     extra_fields.setdefault('is_verified', True)
     return self._create(email, full_name, UserRole.ADMIN, password, **extra_fields)
-  
-  def create_superuser(self, email, full_name, role=None, password=None, **extra_fields):
+
+  def create_superuser(self, email, full_name, password=None, **extra_fields):
     """
-    Mtodo requerido por Django para el comando 'createsuperuser'.
-    Garantiza que el usuario creado sea un ADMIN con los accesos del sistema.
+    Requerido por Django para el comando 'createsuperuser'.
+    El rol siempre se fuerza a ADMIN sin importar lo que se escriba.
     """
-    # Si por alguna razón no se pasa el rol en la terminal, forzamos que sea ADMIN
-    if not role:
-        role = UserRole.ADMIN
-        
     extra_fields.setdefault('is_active',   True)
     extra_fields.setdefault('is_verified', True)
-    
-    # Llamamos a tu método interno _create que ya maneja el set_password
-    return self._create(email, full_name, role, password, **extra_fields)
+    return self._create(email, full_name, UserRole.ADMIN, password, **extra_fields)
+
 
 class User(AbstractBaseUser):
   """
@@ -88,7 +82,7 @@ class User(AbstractBaseUser):
   id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
   email = models.EmailField(max_length=150, unique=True)
   full_name = models.CharField(max_length=150)
-  avatar_url = models.URLField(max_length=500,blank=True,null=True)
+  avatar_url = models.URLField(max_length=500, blank=True, null=True)
   phone = models.CharField(max_length=20, blank=True, null=True)
   role = models.CharField(max_length=20, choices=UserRole.choices)
   is_active = models.BooleanField(default=True)
@@ -97,7 +91,7 @@ class User(AbstractBaseUser):
   updated_at = models.DateTimeField(auto_now=True)
 
   USERNAME_FIELD = 'email'
-  REQUIRED_FIELDS = ['full_name', 'role']
+  REQUIRED_FIELDS = ['full_name']
 
   objects = UserManager()
 

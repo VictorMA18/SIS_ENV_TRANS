@@ -15,6 +15,13 @@ class Client(models.Model):
       db_column='id',
       related_name='client_profile',
   )
+  dni = models.CharField(
+      max_length=15,
+      unique=True,
+      blank=True,
+      null=True,
+      verbose_name="DNI / Documento de Identidad"
+  )
   address = models.TextField(blank=True, null=True)
   is_active = models.BooleanField(default=True)
   created_at = models.DateTimeField(auto_now_add=True)

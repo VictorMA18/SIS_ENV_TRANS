@@ -22,6 +22,13 @@ class Transporter(models.Model):
       blank=True,
       null=True,
   )
+  ruc = models.CharField(
+      max_length=15,
+      unique=True,
+      blank=True,
+      null=True,
+      verbose_name="RUC"
+  )
   vehicle_description = models.TextField(blank=True, null=True)
   is_available = models.BooleanField(default=True)
   is_active = models.BooleanField(default=True)

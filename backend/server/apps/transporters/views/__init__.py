@@ -1,0 +1,45 @@
+from rest_framework.permissions import BasePermission, IsAdminUser
+from rest_framework.viewsets import ModelViewSet
+from rest_framework.permissions import BasePermission
+from rest_framework.request import Request
+from rest_framework.views import APIView
+
+from apps.transporters.models import Transporter
+from apps.transporters.serializers import TransporterSerializer
+
+
+class IsAdminOrTransporterSelf(BasePermission):
+    def has_permission(self, request: Request, view: APIView) -> bool:  # type: ignore
+        if not request.user or not request.user.is_authenticated:
+            return False
+        if request.user.is_admin:
+            return True
+        return request.user.is_transporter
+
+    def has_object_permission(self, request, view, obj):
+        if request.user.is_admin:
+            return True
+        return request.user.is_transporter and obj.user_id == request.user.id
+
+
+class TransporterViewSet(ModelViewSet):
+    queryset = Transporter.objects.select_related("user")
+    serializer_class = TransporterSerializer
+    http_method_names = ["get", "patch", "put", "head", "options"]
+
+    def get_permissions(self):
+        if self.action == "list":
+            return [IsAdminUser()]
+        return [IsAdminOrTransporterSelf()]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        user = self.request.user
+
+        # Validación de seguridad por si el usuario es anónimo
+        if not user or not user.is_authenticated:
+            return queryset.none()
+
+        if user.is_admin:
+            return queryset
+        return queryset.filter(user_id=user.id)

@@ -93,7 +93,7 @@ class User(AbstractBaseUser):
   USERNAME_FIELD = 'email'
   REQUIRED_FIELDS = ['full_name']
 
-  objects = UserManager()
+  objects: UserManager = UserManager() # type: ignore
 
   class Meta:
     db_table = 'users'

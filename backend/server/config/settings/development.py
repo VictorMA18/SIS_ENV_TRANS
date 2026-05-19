@@ -16,3 +16,9 @@ DATABASE_URL = (
 DATABASES = {
     "default": dj_database_url.parse(DATABASE_URL)
 }
+
+
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]

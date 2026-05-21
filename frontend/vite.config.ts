@@ -2,6 +2,7 @@ import { defineConfig } from 'vite'
 import path from 'path'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
+import { VitePWA } from "vite-plugin-pwa"
 
 function figmaAssetResolver() {
   return {
@@ -22,6 +23,21 @@ export default defineConfig({
     // Tailwind is not being actively used – do not remove them
     react(),
     tailwindcss(),
+    VitePWA({
+      registerType: "autoUpdate",
+      manifest: {
+        name: "Logistic App",
+        short_name: "logistic",
+        description: "Descripción de Logistic",
+        icons: [
+          {
+            src: "/images/logo.png",
+            sizes: "150x150",
+            type: "image/png"
+          }
+        ]
+      }
+    })
   ],
   resolve: {
     alias: {
@@ -31,4 +47,7 @@ export default defineConfig({
   },
   // File types to support raw imports. Never add .css, .tsx, or .ts files to this.
   assetsInclude: ['**/*.svg', '**/*.csv'],
+  build: {
+    manifest: "manifest.json" 
+  }
 })

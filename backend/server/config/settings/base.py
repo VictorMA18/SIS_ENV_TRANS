@@ -48,7 +48,11 @@ INSTALLED_APPS = [
     "rest_framework",
     "apps.users",
     "apps.clients",
-    "apps.transporters"
+    "apps.transporters",
+    "apps.shipments",
+    "apps.ratings",
+    "apps.events",
+    "apps.notifications",
 ]
 
 MIDDLEWARE = [

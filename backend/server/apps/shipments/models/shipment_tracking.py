@@ -5,7 +5,6 @@ from django.db import models
 from common.enums.shipment import ShipmentStatus
 from apps.shipments.models.shipment import Shipment
 
-
 class ShipmentTracking(models.Model):
   """
   Registro inmutable de seguimiento / historial de estados de un envío.

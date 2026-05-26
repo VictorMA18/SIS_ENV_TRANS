@@ -25,6 +25,7 @@ class Rating(models.Model):
       on_delete=models.CASCADE,
       related_name='rating',
   )
+  shipment_id: uuid.UUID
   client = models.ForeignKey(
       Client,
       on_delete=models.RESTRICT,

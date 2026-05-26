@@ -2,9 +2,10 @@ import uuid
 
 from django.db import models
 
+from django.utils import timezone
 from common.enums.shipment import ShipmentStatus
 from apps.clients.models.client import Client
-
+from django.core.exceptions import ValidationError
 
 class Shipment(models.Model):
   """
@@ -44,10 +45,23 @@ class Shipment(models.Model):
   is_active = models.BooleanField(default=True)
   created_at = models.DateTimeField(auto_now_add=True)
   updated_at = models.DateTimeField(auto_now=True)
+  scheduled_delivery_at = models.DateTimeField(
+      verbose_name="Fecha y hora de entrega programada",
+      null=True, 
+      blank=True
+  )
+
 
   class Meta:
     db_table = 'shipments'
     ordering = ['-created_at']
+
+  def clean(self):
+    super().clean()
+    if self.scheduled_delivery_at and self.scheduled_delivery_at < timezone.now():
+      raise ValidationError({
+          'scheduled_delivery_at': "La fecha de entrega no puede ser en el pasado."
+      })
 
   def __str__(self):
     return f'Shipment<{self.id}> [{self.status}]'

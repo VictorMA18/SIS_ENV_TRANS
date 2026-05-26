@@ -1,44 +1,85 @@
+import { useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router';
 import {
-  Package, CheckCircle, Users, Star, Plus, TrendingUp, Eye, ArrowRight, MoreHorizontal,
+  Package, CheckCircle, Users, Star, Plus, TrendingUp, Eye, ArrowRight,
+  MoreHorizontal, Loader2, AlertCircle, Inbox,
 } from 'lucide-react';
 import { useAuth } from '../../context/auth';
+import { useShipmentListStore } from '../../stores/useShipmentListStore';
+import { getStatusConfig, formatShipmentDate, formatRelativeTime } from '../../lib/shipment-utils';
+import type { ShipmentStatus, Shipment } from '../../types/shipment';
 
-const SHIPMENTS = [
-  { id: 'ENV-2024-001', origin: 'Miraflores', destination: 'San Isidro', status: 'En tránsito', transporter: 'Carlos Rodríguez', weight: '15 kg', date: '03/05/2026', amount: 'S/. 45' },
-  { id: 'ENV-2024-002', origin: 'Barranco', destination: 'Surco', status: 'Entregado', transporter: 'Miguel Quispe', weight: '8 kg', date: '02/05/2026', amount: 'S/. 30' },
-  { id: 'ENV-2024-003', origin: 'Lince', destination: 'Magdalena', status: 'Aceptado', transporter: 'Luis Vargas', weight: '22 kg', date: '04/05/2026', amount: 'S/. 65' },
-  { id: 'ENV-2024-004', origin: 'Jesús María', destination: 'Pueblo Libre', status: 'Registrado', transporter: '—', weight: '5 kg', date: '05/05/2026', amount: 'S/. 20' },
-  { id: 'ENV-2024-005', origin: 'La Molina', destination: 'Ate', status: 'Seleccionado', transporter: 'Rosa Huanca', weight: '30 kg', date: '01/05/2026', amount: 'S/. 80' },
-];
+// ─── Sub-components ─────────────────────────────────────────────────────────
 
-const STATUS_CFG: Record<string, { bg: string; dot: string; text: string }> = {
-  'Registrado': { bg: 'bg-gray-100', dot: 'bg-gray-400', text: 'text-gray-600' },
-  'Seleccionado': { bg: 'bg-blue-50', dot: 'bg-blue-500', text: 'text-blue-600' },
-  'Aceptado': { bg: 'bg-indigo-50', dot: 'bg-indigo-500', text: 'text-indigo-600' },
-  'En tránsito': { bg: 'bg-amber-50', dot: 'bg-amber-500', text: 'text-amber-600' },
-  'Entregado': { bg: 'bg-green-50', dot: 'bg-green-500', text: 'text-green-600' },
-};
-
-function Badge({ status }: { status: string }) {
-  const c = STATUS_CFG[status] || STATUS_CFG['Registrado'];
+function Badge({ status }: { status: ShipmentStatus }) {
+  const c = getStatusConfig(status);
   return (
     <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${c.bg} ${c.text}`}>
       <span className={`w-1.5 h-1.5 rounded-full ${c.dot}`} />
-      {status}
+      {c.label}
     </span>
   );
 }
 
+// ─── Stats computation ──────────────────────────────────────────────────────
+
+function computeStats(shipments: Shipment[]) {
+  const active = shipments.filter(s =>
+    ['REGISTRADO', 'SELECCIONADO', 'ACEPTADO', 'EN_TRANSITO'].includes(s.status),
+  ).length;
+  const delivered = shipments.filter(s => s.status === 'ENTREGADO').length;
+  const cancelled = shipments.filter(s => s.status === 'CANCELADO').length;
+
+  return { active, delivered, cancelled, total: shipments.length };
+}
+
+// ─── Main component ─────────────────────────────────────────────────────────
+
 export function ClientDashboard() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { shipments, isLoading, error, fetchShipments, clearError } = useShipmentListStore();
+
+  useEffect(() => {
+    fetchShipments();
+  }, [fetchShipments]);
+
+  const computed = useMemo(() => computeStats(shipments), [shipments]);
+
+  // Derive recent activity from shipment tracking entries
+  const recentActivity = useMemo(() => {
+    const entries: { text: string; time: string; color: string }[] = [];
+
+    for (const s of shipments) {
+      // Latest selection status
+      for (const sel of s.selections) {
+        if (sel.status === 'ACEPTADO') {
+          entries.push({
+            text: `${sel.transporter.full_name} aceptó tu envío`,
+            time: formatRelativeTime(sel.responded_at ?? sel.updated_at),
+            color: 'bg-green-400',
+          });
+        }
+      }
+      // Latest tracking
+      for (const t of s.tracking_entries.slice(-1)) {
+        const cfg = getStatusConfig(t.status);
+        entries.push({
+          text: `Envío actualizado a "${cfg.label}"${t.location ? ` en ${t.location}` : ''}`,
+          time: formatRelativeTime(t.created_at),
+          color: cfg.dot,
+        });
+      }
+    }
+
+    return entries.slice(0, 5);
+  }, [shipments]);
 
   const stats = [
-    { label: 'Envíos activos', value: '3', icon: Package, color: '#F97316', bg: 'bg-orange-50', iconBg: 'bg-orange-100', trend: '+2 esta semana' },
-    { label: 'Entregados', value: '24', icon: CheckCircle, color: '#10B981', bg: 'bg-green-50', iconBg: 'bg-green-100', trend: '+5 este mes' },
-    { label: 'Disponibles', value: '47', icon: Users, color: '#3B82F6', bg: 'bg-blue-50', iconBg: 'bg-blue-100', trend: 'En tu zona' },
-    { label: 'Calificación prom.', value: '4.8', icon: Star, color: '#F59E0B', bg: 'bg-amber-50', iconBg: 'bg-amber-100', trend: 'Excelente' },
+    { label: 'Envíos activos', value: computed.active.toString(), icon: Package, color: '#F97316', iconBg: 'bg-orange-100', trend: `${computed.total} totales` },
+    { label: 'Entregados', value: computed.delivered.toString(), icon: CheckCircle, color: '#10B981', iconBg: 'bg-green-100', trend: 'Completados' },
+    { label: 'Total envíos', value: computed.total.toString(), icon: Users, color: '#3B82F6', iconBg: 'bg-blue-100', trend: 'Histórico' },
+    { label: 'Cancelados', value: computed.cancelled.toString(), icon: Star, color: '#F59E0B', iconBg: 'bg-amber-100', trend: computed.cancelled === 0 ? '¡Excelente!' : '' },
   ];
 
   return (
@@ -60,6 +101,17 @@ export function ClientDashboard() {
         </button>
       </div>
 
+      {/* Error */}
+      {error && (
+        <div className="mb-5 p-3 bg-red-50 border border-red-200 rounded-[10px] flex items-start gap-2">
+          <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm text-red-700 font-medium">{error}</p>
+            <button onClick={clearError} className="text-xs text-red-500 hover:underline mt-1">Cerrar</button>
+          </div>
+        </div>
+      )}
+
       {/* Stats */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-7">
         {stats.map(s => (
@@ -70,7 +122,9 @@ export function ClientDashboard() {
               </div>
               <TrendingUp className="w-4 h-4 text-green-400" />
             </div>
-            <div className="text-3xl font-extrabold text-[#0F172A] mb-1">{s.value}</div>
+            <div className="text-3xl font-extrabold text-[#0F172A] mb-1">
+              {isLoading ? <Loader2 className="w-6 h-6 animate-spin text-gray-300" /> : s.value}
+            </div>
             <div className="text-xs text-gray-500 mb-1.5 font-medium">{s.label}</div>
             <div className="text-xs text-green-500 font-medium">{s.trend}</div>
           </div>
@@ -86,74 +140,106 @@ export function ClientDashboard() {
               <h2 className="text-[#0F172A] font-bold text-base">Envíos Recientes</h2>
               <p className="text-gray-400 text-xs mt-0.5">Últimas solicitudes de envío</p>
             </div>
-            <button className="text-xs text-[#F97316] hover:underline flex items-center gap-1 font-medium">
-              Ver todos <ArrowRight className="w-3 h-3" />
+            <button
+              onClick={() => fetchShipments()}
+              className="text-xs text-[#F97316] hover:underline flex items-center gap-1 font-medium">
+              Actualizar <ArrowRight className="w-3 h-3" />
             </button>
           </div>
 
-          {/* Table header */}
-          <div className="hidden md:grid grid-cols-[1.5fr_1.2fr_1fr_0.6fr] gap-4 px-5 py-2.5 bg-gray-50 border-b border-gray-100">
-            {['ID / Ruta', 'Transportista', 'Estado', 'Acción'].map(h => (
-              <span key={h} className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">{h}</span>
-            ))}
-          </div>
+          {/* Loading */}
+          {isLoading && shipments.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-16 text-gray-400">
+              <Loader2 className="w-8 h-8 animate-spin text-[#F97316] mb-3" />
+              <p className="text-sm">Cargando envíos...</p>
+            </div>
+          )}
 
-          <div className="divide-y divide-gray-50">
-            {SHIPMENTS.map(s => (
-              <div key={s.id} className="px-5 py-3.5 hover:bg-gray-50/50 transition-colors">
-                <div className="flex items-center justify-between md:grid md:grid-cols-[1.5fr_1.2fr_1fr_0.6fr] gap-4">
-                  <div className="min-w-0">
-                    <div className="text-sm font-bold text-[#0F172A]">{s.id}</div>
-                    <div className="text-xs text-gray-500 mt-0.5 truncate">
-                      <span className="text-green-600">●</span> {s.origin} → <span className="text-red-500">●</span> {s.destination}
-                    </div>
-                    <div className="text-[10px] text-gray-300 mt-0.5">{s.date} · {s.weight}</div>
-                  </div>
-                  <div className="hidden md:block min-w-0">
-                    <div className="text-sm text-[#0F172A] truncate">{s.transporter}</div>
-                    <div className="text-xs text-[#F97316] font-semibold">{s.amount}</div>
-                  </div>
-                  <div className="hidden md:flex items-center">
-                    <Badge status={s.status} />
-                  </div>
-                  <div className="hidden md:flex items-center gap-1.5">
-                    <button
-                      onClick={() => navigate(`/app/client/tracking/${s.id}`)}
-                      className="p-2 rounded-[8px] hover:bg-orange-50 text-gray-400 hover:text-[#F97316] transition-colors"
-                      title="Ver seguimiento">
-                      <Eye className="w-4 h-4" />
-                    </button>
-                    <button className="p-2 rounded-[8px] hover:bg-gray-100 text-gray-400 transition-colors">
-                      <MoreHorizontal className="w-4 h-4" />
-                    </button>
-                  </div>
-                  {/* Mobile view */}
-                  <div className="md:hidden flex flex-col items-end gap-1.5">
-                    <Badge status={s.status} />
-                    <button onClick={() => navigate(`/app/client/tracking/${s.id}`)}
-                      className="text-xs text-[#F97316] font-medium">Ver →</button>
-                  </div>
-                </div>
+          {/* Empty */}
+          {!isLoading && shipments.length === 0 && !error && (
+            <div className="flex flex-col items-center justify-center py-16 text-gray-400">
+              <Inbox className="w-12 h-12 mb-3 text-gray-300" />
+              <p className="text-sm font-medium text-gray-500">No tienes envíos aún</p>
+              <p className="text-xs text-gray-400 mt-1">Crea tu primer envío para comenzar</p>
+              <button onClick={() => navigate('/app/client/new-shipment')}
+                className="mt-4 flex items-center gap-2 px-4 py-2 bg-[#F97316] text-white rounded-[8px] text-sm font-bold hover:bg-[#ea6b0e] transition-all shadow-md shadow-orange-200">
+                <Plus className="w-4 h-4" /> Crear Envío
+              </button>
+            </div>
+          )}
+
+          {/* Table */}
+          {shipments.length > 0 && (
+            <>
+              <div className="hidden md:grid grid-cols-[1.5fr_1.2fr_1fr_0.6fr] gap-4 px-5 py-2.5 bg-gray-50 border-b border-gray-100">
+                {['Ruta', 'Transportista', 'Estado', 'Acción'].map(h => (
+                  <span key={h} className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">{h}</span>
+                ))}
               </div>
-            ))}
-          </div>
+              <div className="divide-y divide-gray-50">
+                {shipments.slice(0, 10).map(s => {
+                  const acceptedSel = s.selections.find(sel => sel.status === 'ACEPTADO' || sel.status === 'PENDIENTE');
+                  const transporterName = acceptedSel?.transporter.full_name ?? '—';
+
+                  return (
+                    <div key={s.id} className="px-5 py-3.5 hover:bg-gray-50/50 transition-colors">
+                      <div className="flex items-center justify-between md:grid md:grid-cols-[1.5fr_1.2fr_1fr_0.6fr] gap-4">
+                        <div className="min-w-0">
+                          <div className="text-sm font-bold text-[#0F172A] truncate">{s.origin_address}</div>
+                          <div className="text-xs text-gray-500 mt-0.5 truncate">
+                            <span className="text-green-600">●</span> {s.origin_address} → <span className="text-red-500">●</span> {s.destination_address}
+                          </div>
+                          <div className="text-[10px] text-gray-300 mt-0.5">
+                            {formatShipmentDate(s.created_at)}{s.weight_kg ? ` · ${s.weight_kg} kg` : ''}
+                          </div>
+                        </div>
+                        <div className="hidden md:block min-w-0">
+                          <div className="text-sm text-[#0F172A] truncate">{transporterName}</div>
+                        </div>
+                        <div className="hidden md:flex items-center">
+                          <Badge status={s.status} />
+                        </div>
+                        <div className="hidden md:flex items-center gap-1.5">
+                          <button
+                            onClick={() => navigate(`/app/client/tracking/${s.id}`)}
+                            className="p-2 rounded-[8px] hover:bg-orange-50 text-gray-400 hover:text-[#F97316] transition-colors"
+                            title="Ver seguimiento">
+                            <Eye className="w-4 h-4" />
+                          </button>
+                          <button className="p-2 rounded-[8px] hover:bg-gray-100 text-gray-400 transition-colors">
+                            <MoreHorizontal className="w-4 h-4" />
+                          </button>
+                        </div>
+                        {/* Mobile view */}
+                        <div className="md:hidden flex flex-col items-end gap-1.5">
+                          <Badge status={s.status} />
+                          <button onClick={() => navigate(`/app/client/tracking/${s.id}`)}
+                            className="text-xs text-[#F97316] font-medium">Ver →</button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
         </div>
 
         {/* Right column */}
         <div className="space-y-5">
           {/* Monthly summary */}
           <div className="bg-white rounded-[16px] shadow-[0_4px_24px_rgba(0,0,0,0.06)] p-5">
-            <h3 className="text-[#0F172A] font-bold text-sm mb-4">Resumen del mes</h3>
+            <h3 className="text-[#0F172A] font-bold text-sm mb-4">Resumen general</h3>
             <div className="space-y-3">
               {[
-                { label: 'Total gastado', value: 'S/. 340', color: 'text-[#0F172A]' },
-                { label: 'Completados', value: '8', color: 'text-green-600' },
-                { label: 'En proceso', value: '3', color: 'text-amber-600' },
-                { label: 'Tiempo promedio', value: '2.3 hrs', color: 'text-blue-600' },
+                { label: 'Total envíos', value: computed.total.toString(), color: 'text-[#0F172A]' },
+                { label: 'Completados', value: computed.delivered.toString(), color: 'text-green-600' },
+                { label: 'En proceso', value: computed.active.toString(), color: 'text-amber-600' },
+                { label: 'Cancelados', value: computed.cancelled.toString(), color: 'text-red-600' },
               ].map(item => (
                 <div key={item.label} className="flex items-center justify-between py-1 border-b border-gray-50 last:border-0">
                   <span className="text-xs text-gray-500">{item.label}</span>
-                  <span className={`text-sm font-bold ${item.color}`}>{item.value}</span>
+                  <span className={`text-sm font-bold ${item.color}`}>{isLoading ? '...' : item.value}</span>
                 </div>
               ))}
             </div>
@@ -163,17 +249,15 @@ export function ClientDashboard() {
           <div className="bg-white rounded-[16px] shadow-[0_4px_24px_rgba(0,0,0,0.06)] p-5">
             <h3 className="text-[#0F172A] font-bold text-sm mb-4">Actividad reciente</h3>
             <div className="space-y-3">
-              {[
-                { text: 'Carlos aceptó tu envío ENV-001', time: '5 min', color: 'bg-green-400' },
-                { text: 'Nuevo envío registrado ENV-004', time: '2 hrs', color: 'bg-blue-400' },
-                { text: 'ENV-002 entregado exitosamente', time: '1 día', color: 'bg-green-400' },
-                { text: 'ENV-005 en tránsito hacia destino', time: '2 días', color: 'bg-amber-400' },
-              ].map((a, i) => (
+              {recentActivity.length === 0 && (
+                <p className="text-xs text-gray-400 text-center py-4">Sin actividad reciente</p>
+              )}
+              {recentActivity.map((a, i) => (
                 <div key={i} className="flex items-start gap-3">
                   <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${a.color}`} />
                   <div>
                     <p className="text-xs text-[#0F172A] leading-relaxed">{a.text}</p>
-                    <p className="text-[10px] text-gray-400 mt-0.5">Hace {a.time}</p>
+                    <p className="text-[10px] text-gray-400 mt-0.5">{a.time}</p>
                   </div>
                 </div>
               ))}

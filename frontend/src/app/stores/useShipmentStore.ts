@@ -7,10 +7,9 @@ import { create } from 'zustand';
 import type { AvailableTransporter, Shipment } from '../types/shipment';
 import {
   createShipment,
-  fetchAvailableTransporters as fetchTransportersApi,
 } from '../lib/shipment-api';
 import { ApiError } from '../lib/api';
-import { formatApiError } from '../lib/shipment-utils';
+import { formatApiError, buildPeruIsoString } from '../lib/shipment-utils';
 
 // ─── Step 1 payload ─────────────────────────────────────────────────────────
 
@@ -20,8 +19,11 @@ export interface Step1Data {
   description?: string;
   weight_kg?: number;
   volume_m3?: number;
+  price: number;
+  url_images?: string[];
+  delivery_date: string; // YYYY-MM-DD
+  delivery_time: string; // HH:MM
   notes?: string;
-  scheduled_delivery_at?: string; // ISO 8601
 }
 
 // ─── State ──────────────────────────────────────────────────────────────────
@@ -54,10 +56,6 @@ interface ShipmentStoreState {
 interface ShipmentStoreActions {
   goToStep: (step: 1 | 2 | 3) => void;
   setStep1Data: (data: Step1Data) => void;
-  fetchAvailableTransporters: (
-    originDistrict?: string,
-    destinationDistrict?: string,
-  ) => Promise<void>;
   selectTransporter: (transporterId: string) => void;
   submitShipment: () => Promise<void>;
   resetStore: () => void;
@@ -95,25 +93,7 @@ export const useShipmentStore = create<ShipmentStoreState & ShipmentStoreActions
         error: null,
       }),
 
-    // ── Paso 2: Cargar transportistas disponibles ───────────────────────
 
-    fetchAvailableTransporters: async (originDistrict, destinationDistrict) => {
-      set({ isLoading: true, error: null });
-
-      try {
-        const transporters = await fetchTransportersApi(
-          originDistrict,
-          destinationDistrict,
-        );
-        set({ availableTransporters: transporters, isLoading: false });
-      } catch (err) {
-        const message =
-          err instanceof ApiError
-            ? formatApiError(err.data)
-            : 'Error al cargar transportistas.';
-        set({ isLoading: false, error: message });
-      }
-    },
 
     // ── Paso 2: Seleccionar transportista ───────────────────────────────
 
@@ -137,8 +117,12 @@ export const useShipmentStore = create<ShipmentStoreState & ShipmentStoreActions
       set({ isLoading: true, error: null });
 
       try {
+        const { delivery_date, delivery_time, ...rest } = step1Data;
+        const scheduled_delivery_at = buildPeruIsoString(delivery_date, delivery_time);
+
         const createdShipment = await createShipment({
-          ...step1Data,
+          ...rest,
+          scheduled_delivery_at,
           transporter_id: selectedTransporterId,
         });
 
@@ -165,3 +149,4 @@ export const useShipmentStore = create<ShipmentStoreState & ShipmentStoreActions
     clearError: () => set({ error: null }),
   }),
 );
+

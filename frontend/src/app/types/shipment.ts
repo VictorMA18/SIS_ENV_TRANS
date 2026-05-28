@@ -69,6 +69,8 @@ export interface Shipment {
   description: string | null;
   weight_kg: number | null;
   volume_m3: number | null;
+  price: string;
+  url_images: string[];
   status: ShipmentStatus;
   notes: string | null;
   is_active: boolean;
@@ -99,6 +101,16 @@ export interface AvailableTransporter {
   updated_at: string;
 }
 
+// ─── Cloudinary Signature ──────────────────────────────────
+
+export interface CloudinarySignatureResponse {
+  signature: string;
+  timestamp: number;
+  api_key: string;
+  cloud_name: string;
+  folder: string;
+}
+
 // ─── Payloads ───────────────────────────────────────────────────────────────
 
 export interface CreateShipmentPayload {
@@ -107,8 +119,10 @@ export interface CreateShipmentPayload {
   description?: string;
   weight_kg?: number;
   volume_m3?: number;
+  price: number;
+  url_images?: string[];
   notes?: string;
-  scheduled_delivery_at?: string; // ISO 8601
+  scheduled_delivery_at?: string; // ISO 8601 con offset
   transporter_id: string;
 }
 
@@ -118,5 +132,60 @@ export interface UpdateShipmentPayload {
   description?: string;
   weight_kg?: number;
   volume_m3?: number;
+  price?: number;
+  url_images?: string[];
   notes?: string;
+  scheduled_delivery_at?: string;
+}
+
+export interface CancelShipmentPayload {
+  cancellation_reason?: string;
+}
+
+export interface RejectSelectionPayload {
+  rejection_reason?: string;
+}
+
+export interface StartTransitPayload {
+  location?: string;
+  latitude?: number;
+  longitude?: number;
+}
+
+export interface ConfirmDeliveryPayload {
+  location?: string;
+  latitude?: number;
+  longitude?: number;
+  notes?: string;
+}
+
+// ─── Transporter Dashboard Entities ──────────────────────────────────────────
+
+export interface TransporterShipmentDetail {
+  id: string;
+  client: ClientNested;
+  origin_address: string;
+  destination_address: string;
+  description: string | null;
+  weight_kg: string | null;
+  volume_m3: string | null;
+  price: string;
+  url_images: string[];
+  status: ShipmentStatus;
+  notes: string | null;
+  is_active: boolean;
+  scheduled_delivery_at: string | null;
+  created_at: string;
+  updated_at: string;
+  tracking_entries: ShipmentTracking[];
+}
+
+export interface TransporterShipmentSelection {
+  id: string;
+  shipment: TransporterShipmentDetail;
+  status: SelectionStatus;
+  responded_at: string | null;
+  rejection_reason: string | null;
+  created_at: string;
+  updated_at: string;
 }

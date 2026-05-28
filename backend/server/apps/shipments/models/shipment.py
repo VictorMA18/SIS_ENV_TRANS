@@ -41,6 +41,17 @@ class Shipment(models.Model):
       choices=ShipmentStatus.choices,
       default=ShipmentStatus.REGISTERED,
   )
+  price = models.DecimalField(
+      max_digits=10,
+      decimal_places=2,
+      verbose_name="Precio del envío",
+  )
+  url_images = models.JSONField(
+      default=list,
+      blank=True,
+      verbose_name="URLs de imágenes (Cloudinary)",
+      help_text="Array de URLs de imágenes del envío",
+  )
   notes = models.TextField(blank=True, null=True)
   is_active = models.BooleanField(default=True)
   created_at = models.DateTimeField(auto_now_add=True)

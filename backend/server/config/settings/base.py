@@ -38,6 +38,7 @@ ALLOWED_HOSTS = str(allowed_hosts).split(",")
 # Application definition
 
 INSTALLED_APPS = [
+    'daphne',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -53,6 +54,7 @@ INSTALLED_APPS = [
     "apps.ratings",
     "apps.events",
     "apps.notifications",
+    "channels",
 ]
 
 MIDDLEWARE = [
@@ -84,6 +86,34 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'config.wsgi.application'
+ASGI_APPLICATION = 'config.asgi.application'
+
+# ---------------------------------------------------------------------------
+# Django Channels — Channel Layers
+# ---------------------------------------------------------------------------
+
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels.layers.InMemoryChannelLayer",
+    },
+}
+
+# TODO: CONFIGURACIÓN PARA PRODUCCIÓN (DOCKER/DEPLOY)
+# Reemplazar InMemoryChannelLayer por Redis para escalabilidad multi-proceso.
+#
+# CHANNEL_LAYERS = {
+#     "default": {
+#         "BACKEND": "channels_redis.core.RedisChannelLayer",
+#         "CONFIG": {
+#             "hosts": [
+#                 (
+#                     config("REDIS_HOST", default="127.0.0.1"),
+#                     config("REDIS_PORT", default=6379, cast=int),
+#                 )
+#             ],
+#         },
+#     },
+# }
 
 
 # Database
@@ -128,6 +158,16 @@ USE_TZ = True
 STATIC_URL = 'static/'
 
 GOOGLE_OAUTH_CLIENT_ID = config("GOOGLE_OAUTH_CLIENT_ID", default="")
+
+# ---------------------------------------------------------------------------
+# Cloudinary — Signed Uploads
+# ---------------------------------------------------------------------------
+
+CLOUDINARY_CONFIG = {
+    "CLOUD_NAME": config("CLOUDINARY_CLOUD_NAME", default=""),
+    "API_KEY": config("CLOUDINARY_API_KEY", default=""),
+    "API_SECRET": config("CLOUDINARY_API_SECRET", default=""),
+}
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (

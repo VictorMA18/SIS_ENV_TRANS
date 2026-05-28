@@ -35,3 +35,20 @@ export const clearStoredAuth = () => {
 };
 
 export const getAccessToken = () => getStoredAuth()?.access ?? null;
+
+export const isTokenExpired = (token: string | null): boolean => {
+  if (!token) return true;
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return true;
+    const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+    const exp = payload.exp;
+    if (!exp) return false;
+    const now = Math.floor(Date.now() / 1000);
+    // Refresh if token will expire in the next 30 seconds
+    return exp < now + 30;
+  } catch {
+    return true;
+  }
+};
+

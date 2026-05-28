@@ -9,12 +9,16 @@ import type {
   CreateShipmentPayload,
   Shipment,
   UpdateShipmentPayload,
+  CloudinarySignatureResponse,
+  CancelShipmentPayload,
+  RejectSelectionPayload,
+  StartTransitPayload,
+  ConfirmDeliveryPayload,
+  TransporterShipmentSelection,
+  SelectionStatus,
 } from '../types/shipment';
 
-// ─── Endpoints ──────────────────────────────────────────────────────────────
-
 const SHIPMENTS_BASE = '/api/shipments/';
-const AVAILABLE_TRANSPORTERS = '/api/shipments/available-transporters/';
 
 // ─── Shipment CRUD ──────────────────────────────────────────────────────────
 
@@ -53,19 +57,78 @@ export const patchShipment = (
     body: payload,
   });
 
+/** Cancelar un envío (Cliente/Admin) */
+export const cancelShipment = (
+  id: string,
+  payload: CancelShipmentPayload,
+): Promise<Shipment> =>
+  apiRequest<Shipment>(`${SHIPMENTS_BASE}${id}/cancel/`, {
+    method: 'POST',
+    body: payload,
+  });
+
+// ─── Cloudinary ─────────────────────────────────────────────────────────────
+
+/** Obtener firma de Cloudinary para signed uploads seguros */
+export const fetchCloudinarySignature = (): Promise<CloudinarySignatureResponse> =>
+  apiRequest<CloudinarySignatureResponse>(`${SHIPMENTS_BASE}cloudinary-signature/`, {
+    method: 'POST',
+    body: {},
+  });
+
 // ─── Available Transporters ─────────────────────────────────────────────────
 
-/** Obtener transportistas disponibles, opcionalmente filtrados por distrito. */
-export const fetchAvailableTransporters = (
-  originDistrict?: string,
-  destinationDistrict?: string,
-): Promise<AvailableTransporter[]> => {
-  const params = new URLSearchParams();
-  if (originDistrict) params.set('origin_district', originDistrict);
-  if (destinationDistrict) params.set('destination_district', destinationDistrict);
 
-  const query = params.toString();
-  const url = query ? `${AVAILABLE_TRANSPORTERS}?${query}` : AVAILABLE_TRANSPORTERS;
 
-  return apiRequest<AvailableTransporter[]>(url);
+// ─── Transporter Actions ────────────────────────────────────────────────────
+
+/** Obtener envíos asignados al transportista actual, opcionalmente filtrados por estado. */
+export const fetchTransporterSelections = (
+  status?: SelectionStatus,
+): Promise<TransporterShipmentSelection[]> => {
+  const url = status ? `${SHIPMENTS_BASE}transporter/?status=${status}` : `${SHIPMENTS_BASE}transporter/`;
+  return apiRequest<TransporterShipmentSelection[]>(url);
 };
+
+/** Obtener detalle de una selección específica del transportista. */
+export const fetchTransporterSelectionById = (
+  id: string,
+): Promise<TransporterShipmentSelection> =>
+  apiRequest<TransporterShipmentSelection>(`${SHIPMENTS_BASE}transporter/${id}/`);
+
+/** Aceptar una selección asignada. */
+export const acceptSelection = (id: string): Promise<TransporterShipmentSelection> =>
+  apiRequest<TransporterShipmentSelection>(`${SHIPMENTS_BASE}transporter/${id}/accept/`, {
+    method: 'POST',
+    body: {},
+  });
+
+/** Rechazar una selección asignada con motivo de rechazo. */
+export const rejectSelection = (
+  id: string,
+  payload: RejectSelectionPayload,
+): Promise<TransporterShipmentSelection> =>
+  apiRequest<TransporterShipmentSelection>(`${SHIPMENTS_BASE}transporter/${id}/reject/`, {
+    method: 'POST',
+    body: payload,
+  });
+
+/** Iniciar tránsito de un envío aceptado. */
+export const startTransit = (
+  id: string,
+  payload: StartTransitPayload,
+): Promise<TransporterShipmentSelection> =>
+  apiRequest<TransporterShipmentSelection>(`${SHIPMENTS_BASE}transporter/${id}/start-transit/`, {
+    method: 'POST',
+    body: payload,
+  });
+
+/** Confirmar la entrega de un envío en tránsito. */
+export const confirmDelivery = (
+  id: string,
+  payload: ConfirmDeliveryPayload,
+): Promise<TransporterShipmentSelection> =>
+  apiRequest<TransporterShipmentSelection>(`${SHIPMENTS_BASE}transporter/${id}/confirm-delivery/`, {
+    method: 'POST',
+    body: payload,
+  });

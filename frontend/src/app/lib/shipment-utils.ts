@@ -193,3 +193,39 @@ export const formatApiError = (data: unknown): string => {
     })
     .join(' | ');
 };
+
+/**
+ * Convierte un string ISO UTC proveniente del Backend
+ * a un formato legible en Hora Perú.
+ */
+export const formatToPeruTime = (isoString: string | null | undefined): string => {
+  if (!isoString) return 'No programada';
+
+  try {
+    const date = new Date(isoString);
+    if (isNaN(date.getTime())) return 'No programada';
+
+    return new Intl.DateTimeFormat('es-PE', {
+      timeZone: 'America/Lima',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    }).format(date);
+  } catch {
+    return 'No programada';
+  }
+};
+
+/**
+ * Construye un ISO String válido con offset fijo de Perú (-05:00)
+ * a partir de los inputs separados de fecha y hora.
+ */
+export const buildPeruIsoString = (dateString: string, timeString: string): string => {
+  // dateString: "2026-06-01"
+  // timeString: "14:30"
+  return `${dateString}T${timeString}:00-05:00`;
+};
+

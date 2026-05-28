@@ -1,5 +1,6 @@
 import { apiRequest } from './api';
 import type { User, UserRole } from '../context/auth';
+import { getStoredAuth, setStoredAuth, clearStoredAuth, isTokenExpired } from './auth-storage';
 
 type ApiRole = 'CLIENT' | 'TRANSPORTER' | 'ADMIN';
 
@@ -135,3 +136,34 @@ export const loginWithGoogleApi = async (
 
   return mapAuthResponse(data, true);
 };
+
+export const getOrRefreshToken = async (): Promise<string | null> => {
+  const stored = getStoredAuth();
+  if (!stored) return null;
+
+  if (!isTokenExpired(stored.access)) {
+    return stored.access;
+  }
+
+  if (!stored.refresh) {
+    clearStoredAuth();
+    return null;
+  }
+
+  try {
+    const data = await apiRequest<{ access: string }>('/api/auth/token/refresh/', {
+      method: 'POST',
+      auth: false,
+      body: { refresh: stored.refresh },
+    });
+    if (data?.access) {
+      setStoredAuth({ ...stored, access: data.access });
+      return data.access;
+    }
+  } catch (err) {
+    console.error('Failed to refresh access token', err);
+    clearStoredAuth();
+  }
+  return null;
+};
+

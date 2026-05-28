@@ -54,5 +54,43 @@ class Transporter(models.Model):
         ),
     ]
 
+  def __init__(self, *args, **kwargs):
+    super().__init__(*args, **kwargs)
+    self._initial_is_available = self.is_available
+    self._initial_is_active = self.is_active
+
+  def save(self, *args, **kwargs):
+    is_new = self._state.adding
+    super().save(*args, **kwargs)
+
+    if (
+        is_new
+        or getattr(self, '_initial_is_available', None) != self.is_available
+        or getattr(self, '_initial_is_active', None) != self.is_active
+    ):
+      def broadcast_available_transporters():
+        try:
+          from asgiref.sync import async_to_sync
+          from channels.layers import get_channel_layer
+          channel_layer = get_channel_layer()
+          if channel_layer:
+            async_to_sync(channel_layer.group_send)(
+                "available_transporters",
+                {
+                    "type": "transporters.update",
+                }
+            )
+        except Exception:
+          pass
+
+      from django.db import transaction
+      if transaction.get_connection().in_atomic_block:
+        transaction.on_commit(lambda: broadcast_available_transporters())
+      else:
+        broadcast_available_transporters()
+
+      self._initial_is_available = self.is_available
+      self._initial_is_active = self.is_active
+
   def __str__(self):
     return f'Transporter<{self.user.email}>'

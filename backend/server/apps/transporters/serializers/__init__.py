@@ -34,6 +34,7 @@ class TransporterProfileSerializer(serializers.ModelSerializer):
 
 
 class TransporterSerializer(serializers.ModelSerializer):
+    id = serializers.ReadOnlyField(source="user_id")
     email = serializers.EmailField(source="user.email", read_only=True)
     full_name = serializers.CharField(source="user.full_name", max_length=150)
     phone = serializers.CharField(
@@ -106,19 +107,20 @@ class TransporterSerializer(serializers.ModelSerializer):
         return value
 
     def validate(self, attrs):
-        instance = self.instance
-        is_available = attrs.get(
-            "is_available",
-            instance.is_available if instance else False,
-        )
-        license_number = attrs.get(
-            "license_number",
-            instance.license_number if instance else None,
-        )
-        if is_available and not license_number:
-            raise serializers.ValidationError(
-                {"is_available": "Se requiere license_number para estar disponible."}
-            )
+        # Descomentar si se desea exigir brevete para estar disponible:
+        # instance = self.instance
+        # is_available = attrs.get(
+        #     "is_available",
+        #     instance.is_available if instance else False,
+        # )
+        # license_number = attrs.get(
+        #     "license_number",
+        #     instance.license_number if instance else None,
+        # )
+        # if is_available and not license_number:
+        #     raise serializers.ValidationError(
+        #         {"is_available": "Se requiere license_number para estar disponible."}
+        #     )
         return attrs
 
     def update(self, instance, validated_data):
@@ -206,12 +208,13 @@ class TransporterRegisterSerializer(serializers.Serializer):
             })
         validate_password_value(password)
 
-        is_available = attrs.get("is_available", False)
-        license_number = attrs.get("license_number")
-        if is_available and not license_number:
-            raise serializers.ValidationError(
-                {"is_available": "Se requiere license_number para estar disponible."}
-            )
+        # Descomentar si se desea exigir brevete para estar disponible:
+        # is_available = attrs.get("is_available", False)
+        # license_number = attrs.get("license_number")
+        # if is_available and not license_number:
+        #     raise serializers.ValidationError(
+        #         {"is_available": "Se requiere license_number para estar disponible."}
+        #     )
         return attrs
 
     def create(self, validated_data):

@@ -7,9 +7,9 @@ from apps.shipments.models.shipment_tracking import ShipmentTracking
 
 @admin.register(Shipment)
 class ShipmentAdmin(admin.ModelAdmin):
-  list_display = ("id", "client", "origin_address", "destination_address", "description", "weight_kg", "volume_m3", "status", "notes", "is_active", "created_at", "updated_at")
-  list_filter = ("is_active",)
-  search_fields = ("id", "client", "origin_address", "destination_address", "description", "weight_kg", "volume_m3")
+  list_display = ("id", "client", "origin_address", "destination_address", "description", "weight_kg", "volume_m3", "price", "status", "notes", "is_active", "created_at", "updated_at")
+  list_filter = ("is_active", "status")
+  search_fields = ("id", "client", "origin_address", "destination_address", "description", "weight_kg", "volume_m3", "price")
 
 @admin.register(ShipmentTracking)
 class ShipmentTrackingAdmin(admin.ModelAdmin):
@@ -20,5 +20,5 @@ class ShipmentTrackingAdmin(admin.ModelAdmin):
 @admin.register(ShipmentSelection)
 class ShipmentSelectionAdmin(admin.ModelAdmin):
   list_display = ("id", "shipment", "transporter", "status", "responded_at", "rejection_reason", "created_at", "updated_at")
-  list_filter = ("created_at",)
+  list_filter = ("created_at", "status")
   search_fields = ("id", "shipment", "transporter", "status", "responded_at", "rejection_reason")  

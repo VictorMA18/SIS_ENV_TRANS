@@ -189,3 +189,39 @@ export interface TransporterShipmentSelection {
   created_at: string;
   updated_at: string;
 }
+
+// ─── Notification ────────────────────────────────────────────────────────────
+
+export interface NotificationMetadata {
+  type: 'RATING_REQUEST' | string;
+  shipment_id?: string;
+  transporter_id?: string;
+  transporter_name?: string;
+}
+
+export interface AppNotification {
+  id: string;
+  title: string;
+  message: string;
+  status: 'PENDIENTE' | 'ENVIADO' | 'FALLIDO';
+  metadata: NotificationMetadata | null;
+  is_read: boolean;
+  created_at: string;
+}
+
+// ─── Rating ─────────────────────────────────────────────────────────────────
+
+export interface RatingPayload {
+  shipment_id: string;
+  score: number;      // 1 – 5
+  comment?: string;
+}
+
+export interface Rating {
+  id: string;
+  shipment_id: string;
+  score: number;
+  comment: string | null;
+  created_at: string;
+  updated_at: string;
+}

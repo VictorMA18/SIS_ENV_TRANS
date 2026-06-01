@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router';
 import {
   LayoutDashboard, Package, Users, MapPin, User, Bell, LogOut,
@@ -38,8 +38,13 @@ export function AppLayout() {
     return null;
   }
 
-  if (!isAuthenticated) {
-    navigate('/auth');
+  useEffect(() => {
+    if (!isInitializing && !isAuthenticated) {
+      navigate('/auth');
+    }
+  }, [isAuthenticated, isInitializing, navigate]);
+
+  if (isInitializing || !isAuthenticated) {
     return null;
   }
 

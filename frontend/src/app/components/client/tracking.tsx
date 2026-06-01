@@ -3,9 +3,10 @@ import { useParams, useNavigate } from 'react-router';
 import {
   MapPin, Truck, Package, CheckCircle, Clock, Star, ArrowLeft,
   Phone, MessageSquare, Loader2, AlertCircle, Coins, Upload, X,
-  Image as ImageIcon, Edit, Trash2, Camera, Save, AlertTriangle, Calendar
+  Image as ImageIcon, Edit, Trash2, Camera, Save, AlertTriangle, Calendar, Bell,
 } from 'lucide-react';
 import { useShipmentListStore } from '../../stores/useShipmentListStore';
+import { useNotificationStore } from '../../stores/useNotificationStore';
 import {
   getStatusConfig, getStatusTimeline, getStatusIndex,
   formatShipmentDate, formatRelativeTime, getInitials, getAvatarColor,
@@ -13,6 +14,7 @@ import {
 } from '../../lib/shipment-utils';
 import type { ShipmentTracking, UpdateShipmentPayload } from '../../types/shipment';
 import { fetchCloudinarySignature } from '../../lib/shipment-api';
+import { RatingModal } from './RatingModal';
 
 // ─── Icon mapping for timeline ──────────────────────────────────────────────
 
@@ -69,6 +71,12 @@ export function TrackingPage() {
     fetchShipmentById, updateShipment, cancelClientShipment, clearCurrentShipment
   } = useShipmentListStore();
 
+  const {
+    pendingRatingNotification,
+    fetchNotifications,
+    openRatingModal,
+  } = useNotificationStore();
+
   // Edit states
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState({
@@ -93,8 +101,9 @@ export function TrackingPage() {
 
   useEffect(() => {
     if (id) fetchShipmentById(id);
+    fetchNotifications();
     return () => { clearCurrentShipment(); };
-  }, [id, fetchShipmentById, clearCurrentShipment]);
+  }, [id, fetchShipmentById, clearCurrentShipment, fetchNotifications]);
 
   // Sync form states with shipment when entering edit mode
   const startEdit = () => {
@@ -283,6 +292,9 @@ export function TrackingPage() {
 
   return (
     <div className="p-5 lg:p-7" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+      {/* Rating modal */}
+      <RatingModal />
+
       {/* Header */}
       <div className="flex flex-wrap items-center gap-3 mb-6">
         <button onClick={() => navigate('/app/client/dashboard')}
@@ -336,6 +348,29 @@ export function TrackingPage() {
             <p className="text-sm font-bold text-red-700">Envío cancelado</p>
             <p className="text-xs text-red-550">Este envío ha sido cancelado y no puede ser modificado.</p>
           </div>
+        </div>
+      )}
+
+      {/* Rating banner — aparece cuando el envío fue entregado y hay notificación pendiente para este envío */}
+      {currentShipment.status === 'ENTREGADO' && pendingRatingNotification?.metadata?.shipment_id === currentShipment.id && (
+        <div
+          className="mb-6 flex items-center gap-4 p-4 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-[14px] shadow-sm"
+          style={{ animation: 'slideDownFade 0.4s ease' }}
+        >
+          <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
+            <Star className="w-6 h-6 text-amber-500 fill-amber-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-extrabold text-[#0F172A]">¡Tu envío fue entregado exitosamente!</p>
+            <p className="text-xs text-gray-500 mt-0.5">¿Cómo fue tu experiencia? Ayuda a otros clientes calificando el servicio.</p>
+          </div>
+          <button
+            onClick={openRatingModal}
+            className="flex-shrink-0 flex items-center gap-1.5 px-4 py-2.5 bg-[#F97316] text-white rounded-[10px] text-sm font-bold hover:bg-[#ea6b0e] transition-all shadow-md shadow-orange-200 hover:scale-[1.02]"
+          >
+            <Star className="w-4 h-4 fill-white" />
+            Calificar
+          </button>
         </div>
       )}
 

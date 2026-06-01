@@ -19,6 +19,7 @@ from apps.shipments.models.shipment import Shipment
 from apps.shipments.models.shipment_selection import ShipmentSelection
 from apps.shipments.models.shipment_tracking import ShipmentTracking
 from apps.transporters.models.transporter import Transporter
+from apps.notifications.models.notification import Notification
 from common.enums.shipment import ShipmentStatus, SelectionStatus
 
 
@@ -278,6 +279,26 @@ def confirm_delivery(*, user, selection_id, location_data=None, notes=""):
             latitude=location_data.get("latitude"),
             longitude=location_data.get("longitude"),
             notes=notes or "Transportista confirmó la entrega.",
+        )
+
+        # 3. Crear notificación al cliente para que califique el servicio
+        client = shipment.client
+        Notification.objects.create(
+            recipient_type="CLIENT",
+            recipient_id=client.user_id,
+            title="¡Tu envío fue entregado! ⭐ Califica el servicio",
+            message=(
+                f"Tu envío de {shipment.origin_address} a {shipment.destination_address} "
+                f"ha sido entregado. ¡Cuéntanos cómo fue tu experiencia con el transportista!"
+            ),
+            metadata={
+                "type": "RATING_REQUEST",
+                "shipment_id": str(shipment.id),
+                "transporter_id": str(selection.transporter.user_id),
+                "transporter_name": selection.transporter.user.full_name,
+            },
+            status="PENDIENTE",
+            is_read=False,
         )
 
     return selection

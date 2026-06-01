@@ -16,6 +16,9 @@ import type {
   ConfirmDeliveryPayload,
   TransporterShipmentSelection,
   SelectionStatus,
+  AppNotification,
+  Rating,
+  RatingPayload,
 } from '../types/shipment';
 
 const SHIPMENTS_BASE = '/api/shipments/';
@@ -129,6 +132,28 @@ export const confirmDelivery = (
   payload: ConfirmDeliveryPayload,
 ): Promise<TransporterShipmentSelection> =>
   apiRequest<TransporterShipmentSelection>(`${SHIPMENTS_BASE}transporter/${id}/confirm-delivery/`, {
+    method: 'POST',
+    body: payload,
+  });
+
+// ─── Notifications ───────────────────────────────────────────────────────────
+
+/** Obtener notificaciones del cliente autenticado. */
+export const fetchNotifications = (): Promise<AppNotification[]> =>
+  apiRequest<AppNotification[]>('/api/notifications/');
+
+/** Marcar una notificación como leída. */
+export const markNotificationRead = (id: string): Promise<AppNotification> =>
+  apiRequest<AppNotification>(`/api/notifications/${id}/read/`, {
+    method: 'PATCH',
+    body: {},
+  });
+
+// ─── Ratings ─────────────────────────────────────────────────────────────────
+
+/** Enviar calificación del cliente para un envío entregado. */
+export const submitRating = (payload: RatingPayload): Promise<Rating> =>
+  apiRequest<Rating>('/api/ratings/', {
     method: 'POST',
     body: payload,
   });

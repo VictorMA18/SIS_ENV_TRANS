@@ -17,6 +17,8 @@ class Notification(models.Model):
   recipient_id   → UUID del destinatario (no es FK porque puede
                    apuntar a clients o transporters).
   status         → PENDIENTE → ENVIADO / FALLIDO.
+  is_read        → marca si el destinatario ya leyó/atendió la notificación.
+  metadata       → datos adicionales en JSON (p.ej. {"shipment_id": "...", "type": "RATING_REQUEST"}).
   is_active      → para archivar sin eliminar.
   """
 
@@ -45,6 +47,10 @@ class Notification(models.Model):
       choices=NotificationStatus.choices,
       default=NotificationStatus.PENDING,
   )
+  # Datos adicionales para que el frontend pueda actuar (p.ej. abrir el modal de calificación)
+  metadata = models.JSONField(blank=True, null=True, default=None)
+  # True cuando el destinatario ya atendió la notificación
+  is_read = models.BooleanField(default=False)
   sent_at = models.DateTimeField(blank=True, null=True)
   is_active = models.BooleanField(default=True)
   created_at = models.DateTimeField(auto_now_add=True)

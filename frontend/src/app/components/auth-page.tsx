@@ -271,10 +271,11 @@ export function AuthPage() {
     if (!regEmail) errs.email = 'El correo es requerido';
     else if (!/\S+@\S+\.\S+/.test(regEmail)) errs.email = 'Correo inválido';
     if (!regPassword) errs.password = 'La contraseña es requerida';
-    else if (regPassword.length < 6) errs.password = 'Mínimo 6 caracteres';
-    if (regPassword !== regConfirm) errs.confirm = 'Las contraseñas no coinciden';
+    else if (regPassword.length < 8) errs.password = 'Mínimo 8 caracteres';
+    if (!regConfirm) errs.confirm = 'Confirma tu contraseña';
+    else if (regPassword !== regConfirm)  errs.confirm = 'Las contraseñas no coinciden';
     if (!acceptedTerms) errs.terms = 'Debes aceptar los términos';
-    if (Object.keys(errs).length) { setRegErrors(errs); return; }
+    if (Object.keys(errs).length) { console.log(regErrors); setRegErrors(errs); return; }
     setRegErrors({});
     setRegisterLoading(true);
     try {

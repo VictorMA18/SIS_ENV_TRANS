@@ -1,9 +1,10 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import {
   CheckCircle, Star, Package, Truck, TrendingUp, Check, X,
   ChevronDown, ArrowRight, MapPin, Activity, FileText, Camera,
-  AlertTriangle, Loader2, Coins, Calendar, Clock, Sparkles
+  AlertTriangle, Loader2, Coins, Calendar, Clock, Sparkles, Bell
 } from 'lucide-react';
+import { useTransporterNotifications } from '../../hooks/useTransporterNotifications';
 import { useAuth } from '../../context/auth';
 import { useShipmentListStore } from '../../stores/useShipmentListStore';
 import {
@@ -60,6 +61,10 @@ export function TransporterDashboard() {
   // Dropdown states for active shipment action menus
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
+  // Estado del banner de notificación
+  const [notification, setNotification] = useState<string | null>(null);
+  const notifTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Load data on mount
   useEffect(() => {
     if (user?.id) {
@@ -67,6 +72,26 @@ export function TransporterDashboard() {
       fetchTransporterSelections();
     }
   }, [user?.id, fetchTransporterSelections]);
+
+  // --- Notificaciones en tiempo real ---
+  const handleNewShipment = useCallback(({ message }: { shipmentId: string; message: string }) => {
+    // Refrescar la lista automáticamente
+    fetchTransporterSelections();
+    // Mostrar banner por 8 segundos
+    if (notifTimerRef.current) clearTimeout(notifTimerRef.current);
+    setNotification(message);
+    notifTimerRef.current = setTimeout(() => setNotification(null), 8000);
+  }, [fetchTransporterSelections]);
+
+  useTransporterNotifications({
+    enabled: user?.role === 'transporter',
+    onNewShipment: handleNewShipment,
+  });
+
+  // Limpiar timer al desmontar
+  useEffect(() => () => {
+    if (notifTimerRef.current) clearTimeout(notifTimerRef.current);
+  }, []);
 
   const loadProfile = async () => {
     if (!user?.id) return;
@@ -222,6 +247,26 @@ export function TransporterDashboard() {
           </button>
         )}
       </div>
+
+      {/* Banner de notificación en tiempo real */}
+      {notification && (
+        <div className="mb-5 flex items-center gap-3 px-4 py-3 bg-indigo-50 border border-indigo-200 rounded-[14px] shadow-sm animate-pulse-once">
+          <div className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center flex-shrink-0">
+            <Bell className="w-4 h-4 text-indigo-600" />
+          </div>
+          <div className="flex-1">
+            <p className="text-sm font-bold text-indigo-800">Nueva solicitud de envío</p>
+            <p className="text-xs text-indigo-600">{notification} — la lista ya fue actualizada.</p>
+          </div>
+          <button
+            onClick={() => { setNotification(null); if (notifTimerRef.current) clearTimeout(notifTimerRef.current); }}
+            className="text-indigo-400 hover:text-indigo-700 transition-colors p-1"
+            aria-label="Cerrar notificación"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* Error Displays */}
       {(profileError || storeError) && (

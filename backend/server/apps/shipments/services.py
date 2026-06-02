@@ -11,6 +11,8 @@ Todas las operaciones se envuelven en transaction.atomic() y registran
 hitos inmutables en shipment_tracking (append-only).
 """
 
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 from django.db import transaction
 from django.utils import timezone
 from rest_framework import serializers
@@ -89,6 +91,23 @@ def create_shipment_with_selection(*, client, shipment_data, transporter_id):
             shipment=shipment,
             status=ShipmentStatus.SELECTED,
         )
+
+    # --- Notificación push al transportista (fuera de la transacción) ---
+    # Si el transportista tiene el dashboard abierto, recibirá la alerta
+    # instantáneamente sin necesidad de refrescar la página.
+    try:
+        channel_layer = get_channel_layer()
+        async_to_sync(channel_layer.group_send)(
+            f"transporter_{transporter.user_id}",
+            {
+                "type": "new_shipment",
+                "shipment_id": str(shipment.id),
+                "message": "Tienes una nueva solicitud de envío",
+            },
+        )
+    except Exception:
+        # No fallar el flujo principal si el WebSocket no está disponible
+        pass
 
     return shipment
 

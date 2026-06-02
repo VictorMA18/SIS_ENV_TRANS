@@ -1,9 +1,16 @@
 """
-Consumer WebSocket para transportistas disponibles.
+Consumers WebSocket para la app shipments.
 
-Reemplaza el endpoint GET /api/shipments/available-transporters/
-con una conexión en tiempo real que mantiene las mismas reglas de
-prioridad y filtrado de transportistas activos/disponibles.
+AvailableTransportersConsumer:
+    Transmite en tiempo real la lista de transportistas disponibles.
+    URL: ws/shipments/available-transporters/?token=<JWT>
+
+TransporterNotificationsConsumer:
+    Canal personal por transportista para recibir notificaciones push.
+    URL: ws/shipments/notifications/?token=<JWT>
+    Cuando el backend crea un envío asignado a ese transportista,
+    envía un mensaje al grupo 'transporter_<user_id>' y éste lo
+    reenvía al cliente conectado.
 """
 
 import json
@@ -137,3 +144,89 @@ class AvailableTransportersConsumer(AsyncJsonWebsocketConsumer):
 
         serializer = TransporterProfileSerializer(qs, many=True)
         return serializer.data
+
+
+# ---------------------------------------------------------------------------
+# Consumer personal de notificaciones por transportista
+# ---------------------------------------------------------------------------
+
+
+class TransporterNotificationsConsumer(AsyncJsonWebsocketConsumer):
+    """
+    WebSocket: ws/shipments/notifications/?token=<JWT>
+
+    Comportamiento:
+        - Solo acepta conexiones de usuarios autenticados con rol TRANSPORTER.
+        - Al conectar: se une al grupo personal 'transporter_<user_id>'.
+        - Al desconectar: abandona el grupo.
+        - Recibe mensajes del grupo (emitidos desde services.py) y los
+          reenvía directamente al cliente WebSocket.
+
+    Tipos de mensaje recibidos desde el backend:
+        {
+            "type": "new_shipment",          # handler: new_shipment()
+            "shipment_id": "<uuid>",
+            "message": "Tienes una nueva solicitud de envío",
+        }
+    """
+
+    def _group_name(self):
+        """Nombre del grupo personal del transportista."""
+        return f"transporter_{self.scope['user'].id}"
+
+    async def connect(self):
+        """Acepta solo transportistas autenticados y los une a su grupo personal."""
+        user = self.scope.get("user", AnonymousUser())
+
+        if isinstance(user, AnonymousUser) or not user.is_authenticated:
+            await self.close(code=4001)
+            return
+
+        # Solo transportistas (o admins para testing)
+        if not (user.is_transporter or user.is_admin):
+            await self.close(code=4003)
+            return
+
+        await self.channel_layer.group_add(
+            self._group_name(),
+            self.channel_name,
+        )
+        await self.accept()
+
+    async def disconnect(self, close_code):
+        """Abandona el grupo personal al desconectar."""
+        user = self.scope.get("user", AnonymousUser())
+        if not isinstance(user, AnonymousUser) and user.is_authenticated:
+            await self.channel_layer.group_discard(
+                self._group_name(),
+                self.channel_name,
+            )
+
+    async def receive_json(self, content, **kwargs):
+        """
+        El cliente puede enviar un ping para mantener la conexión viva.
+        { "type": "ping" }  →  { "type": "pong" }
+        """
+        if content.get("type") == "ping":
+            await self.send_json({"type": "pong"})
+
+    # ------------------------------------------------------------------
+    # Handlers de mensajes de grupo (llamados por channel_layer.group_send)
+    # ------------------------------------------------------------------
+
+    async def new_shipment(self, event):
+        """
+        Reenvía al cliente WebSocket la notificación de nuevo envío.
+
+        Payload al cliente:
+            {
+                "type": "new_shipment",
+                "shipment_id": "<uuid>",
+                "message": "Tienes una nueva solicitud de envío",
+            }
+        """
+        await self.send_json({
+            "type": "new_shipment",
+            "shipment_id": event.get("shipment_id", ""),
+            "message": event.get("message", "Tienes una nueva solicitud de envío"),
+        })

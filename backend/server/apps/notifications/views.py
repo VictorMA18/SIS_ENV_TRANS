@@ -1,8 +1,11 @@
 """
 Views para el módulo de notificaciones.
 
-GET  /api/notifications/          → Lista las notificaciones del usuario autenticado.
-PATCH /api/notifications/{id}/read/ → Marca una notificación como leída.
+GET   /api/notifications/              → Lista las notificaciones del usuario autenticado.
+GET   /api/notifications/{id}/         → Detalle de una notificación.
+PATCH /api/notifications/{id}/read/    → Marca una notificación como leída.
+PATCH /api/notifications/read-all/     → Marca TODAS las notificaciones como leídas.
+GET   /api/notifications/unread-count/ → Contador de notificaciones no leídas (para badge).
 """
 
 from rest_framework import serializers as drf_serializers, status
@@ -12,16 +15,18 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet
 
-from apps.clients.models import Client
 from apps.notifications.models.notification import Notification
 
 
 # ---------------------------------------------------------------------------
-# Serializer inline
+# Serializer
 # ---------------------------------------------------------------------------
 
 
 class NotificationSerializer(drf_serializers.ModelSerializer):
+    # Seguridad defensiva: metadata nunca es None en la respuesta
+    metadata = drf_serializers.SerializerMethodField()
+
     class Meta:
         model = Notification
         fields = [
@@ -35,6 +40,10 @@ class NotificationSerializer(drf_serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
+    def get_metadata(self, obj):
+        """Garantiza que metadata siempre sea un dict, nunca None."""
+        return obj.metadata if obj.metadata else {}
+
 
 # ---------------------------------------------------------------------------
 # ViewSet
@@ -43,7 +52,8 @@ class NotificationSerializer(drf_serializers.ModelSerializer):
 
 class NotificationViewSet(ListModelMixin, RetrieveModelMixin, GenericViewSet):
     """
-    Endpoints de notificaciones para el cliente autenticado.
+    Endpoints de notificaciones para el usuario autenticado.
+    Soporta tanto clientes como transportistas.
     """
 
     serializer_class = NotificationSerializer
@@ -54,15 +64,20 @@ class NotificationViewSet(ListModelMixin, RetrieveModelMixin, GenericViewSet):
         if not user or not user.is_authenticated:
             return Notification.objects.none()
 
-        # Solo clientes pueden consultar notificaciones por ahora
-        try:
-            client = Client.objects.get(user_id=user.id)
-        except Client.DoesNotExist:
+        # Determinar tipo de destinatario según el rol del usuario
+        if user.is_client:
+            recipient_type = "CLIENT"
+        elif user.is_transporter:
+            recipient_type = "TRANSPORTER"
+        elif user.is_admin:
+            # Admin puede ver todas las notificaciones
+            return Notification.objects.filter(is_active=True)
+        else:
             return Notification.objects.none()
 
         return Notification.objects.filter(
-            recipient_type="CLIENT",
-            recipient_id=client.user_id,
+            recipient_type=recipient_type,
+            recipient_id=user.id,
             is_active=True,
         )
 
@@ -77,3 +92,30 @@ class NotificationViewSet(ListModelMixin, RetrieveModelMixin, GenericViewSet):
         notification.is_read = True
         notification.save(update_fields=["is_read", "updated_at"])
         return Response(NotificationSerializer(notification).data)
+
+    # ------------------------------------------------------------------
+    # PATCH /api/notifications/read-all/  → marcar todas como leídas
+    # ------------------------------------------------------------------
+
+    @action(detail=False, methods=["patch"], url_path="read-all")
+    def mark_all_read(self, request):
+        """Marca todas las notificaciones no leídas del usuario como leídas."""
+        qs = self.get_queryset().filter(is_read=False)
+        updated = qs.update(is_read=True)
+        return Response(
+            {"detail": f"{updated} notificaciones marcadas como leídas."},
+            status=status.HTTP_200_OK,
+        )
+
+    # ------------------------------------------------------------------
+    # GET /api/notifications/unread-count/  → contador para badge
+    # ------------------------------------------------------------------
+
+    @action(detail=False, methods=["get"], url_path="unread-count")
+    def unread_count(self, request):
+        """Devuelve el número de notificaciones no leídas."""
+        count = self.get_queryset().filter(is_read=False).count()
+        return Response(
+            {"unread_count": count},
+            status=status.HTTP_200_OK,
+        )

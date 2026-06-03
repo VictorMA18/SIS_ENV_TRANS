@@ -10,24 +10,24 @@ class Notification(models.Model):
   """
   Notificación enviada a un usuario (cliente o transportista).
 
-  Se genera a partir de un SystemEvent y se envía por un canal
-  (SISTEMA, EMAIL o SMS).
+  Se genera EXCLUSIVAMENTE a partir de un SystemEvent. La FK es
+  obligatoria (null=False) para garantizar trazabilidad completa.
 
   recipient_type → 'CLIENT' o 'TRANSPORTER' (validado con CHECK).
   recipient_id   → UUID del destinatario (no es FK porque puede
                    apuntar a clients o transporters).
   status         → PENDIENTE → ENVIADO / FALLIDO.
   is_read        → marca si el destinatario ya leyó/atendió la notificación.
-  metadata       → datos adicionales en JSON (p.ej. {"shipment_id": "...", "type": "RATING_REQUEST"}).
+  metadata       → datos de navegación en JSON para el frontend
+                   (p.ej. {"shipment_id": "...", "type": "RATING_REQUEST"}).
+                   Nunca debe ser None en la respuesta API — default dict vacío.
   is_active      → para archivar sin eliminar.
   """
 
   id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
   event = models.ForeignKey(
       SystemEvent,
-      on_delete=models.SET_NULL,
-      blank=True,
-      null=True,
+      on_delete=models.PROTECT,
       related_name='notifications',
   )
   recipient_type = models.CharField(
@@ -47,8 +47,8 @@ class Notification(models.Model):
       choices=NotificationStatus.choices,
       default=NotificationStatus.PENDING,
   )
-  # Datos adicionales para que el frontend pueda actuar (p.ej. abrir el modal de calificación)
-  metadata = models.JSONField(blank=True, null=True, default=None)
+  # Datos de navegación para el frontend (nunca None en la API)
+  metadata = models.JSONField(blank=True, default=dict)
   # True cuando el destinatario ya atendió la notificación
   is_read = models.BooleanField(default=False)
   sent_at = models.DateTimeField(blank=True, null=True)

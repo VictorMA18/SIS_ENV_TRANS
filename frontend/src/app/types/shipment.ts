@@ -26,6 +26,7 @@ export interface ClientNested {
   email: string;
   full_name: string;
   avatar_url: string | null;
+  average_rating: number | null;
 }
 
 export interface TransporterMini {
@@ -190,21 +191,20 @@ export interface TransporterShipmentSelection {
   updated_at: string;
 }
 
-// ─── Notification ────────────────────────────────────────────────────────────
-
 export interface NotificationMetadata {
-  type: 'RATING_REQUEST' | string;
+  type?: string;
   shipment_id?: string;
   transporter_id?: string;
-  transporter_name?: string;
+  action_url?: string;
+  [key: string]: unknown;
 }
 
 export interface AppNotification {
   id: string;
   title: string;
   message: string;
-  status: 'PENDIENTE' | 'ENVIADO' | 'FALLIDO';
-  metadata: NotificationMetadata | null;
+  status: 'PENDIENTE' | 'ENVIADO' | 'FALLIDO' | string;
+  metadata: NotificationMetadata;
   is_read: boolean;
   created_at: string;
 }
@@ -220,8 +220,11 @@ export interface RatingPayload {
 export interface Rating {
   id: string;
   shipment_id: string;
+  reviewer_role: 'CLIENT' | 'TRANSPORTER' | string;
   score: number;
   comment: string | null;
+  client_name: string;
+  transporter_name: string;
   created_at: string;
   updated_at: string;
 }

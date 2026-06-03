@@ -30,6 +30,7 @@ class ClientProfileSerializer(serializers.ModelSerializer):
 
 
 class ClientSerializer(serializers.ModelSerializer):
+    id = serializers.ReadOnlyField(source="user_id")
     email = serializers.EmailField(source="user.email", read_only=True)
     full_name = serializers.CharField(source="user.full_name", max_length=150)
     phone = serializers.CharField(
@@ -57,6 +58,7 @@ class ClientSerializer(serializers.ModelSerializer):
             "dni",
             "address",
             "is_active",
+            "average_rating",
             "created_at",
             "updated_at",
         )
@@ -64,6 +66,7 @@ class ClientSerializer(serializers.ModelSerializer):
             "id",
             "email",
             "is_active",
+            "average_rating",
             "created_at",
             "updated_at",
         )

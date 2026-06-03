@@ -149,6 +149,18 @@ export const markNotificationRead = (id: string): Promise<AppNotification> =>
     body: {},
   });
 
+/** Marcar todas las notificaciones como leídas. */
+export const markAllNotificationsRead = (): Promise<{ detail: string }> =>
+  apiRequest<{ detail: string }>('/api/notifications/read-all/', {
+    method: 'PATCH',
+    body: {},
+  });
+
+/** Obtener el contador de notificaciones no leídas. */
+export const fetchUnreadCount = (): Promise<{ unread_count: number }> =>
+  apiRequest<{ unread_count: number }>('/api/notifications/unread-count/');
+
+
 // ─── Ratings ─────────────────────────────────────────────────────────────────
 
 /** Enviar calificación del cliente para un envío entregado. */
@@ -157,3 +169,20 @@ export const submitRating = (payload: RatingPayload): Promise<Rating> =>
     method: 'POST',
     body: payload,
   });
+
+// ─── Client Profile ──────────────────────────────────────────────────────────
+
+export interface ClientProfile {
+  id: string;
+  email: string;
+  full_name: string;
+  phone?: string | null;
+  avatar_url?: string | null;
+  dni?: string | null;
+  address?: string | null;
+  average_rating: number | null;
+}
+
+export const fetchClientProfile = (id: string): Promise<ClientProfile> =>
+  apiRequest<ClientProfile>(`/api/clients/${id}/`);
+

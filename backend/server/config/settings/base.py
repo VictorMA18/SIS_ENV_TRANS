@@ -190,3 +190,15 @@ SIMPLE_JWT = {
     "AUTH_HEADER_TYPES": ("Bearer",),
 }
 
+# ---------------------------------------------------------------------------
+# RabbitMQ — Message Broker (AMQP)
+# ---------------------------------------------------------------------------
+
+RABBITMQ = {
+    "HOST": config("RABBITMQ_HOST", default="localhost"),
+    "PORT": config("RABBITMQ_PORT", default=5672, cast=int),
+    "USER": config("RABBITMQ_USER", default="guest"),
+    "PASS": config("RABBITMQ_PASS", default="guest"),
+    "EXCHANGE": "shipment_events",
+    "QUEUE": "notification_queue",
+}

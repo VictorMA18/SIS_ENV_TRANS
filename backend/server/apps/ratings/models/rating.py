@@ -10,22 +10,30 @@ from apps.transporters.models.transporter import Transporter
 
 class Rating(models.Model):
   """
-  Calificación que un cliente otorga a un transportista tras la entrega.
+  Calificación bidireccional dentro de un envío entregado.
 
-  Cada envío solo puede tener una calificación (unique en shipment).
+  Cada envío permite DOS calificaciones:
+    1. Cliente → Transportista  (reviewer_role='CLIENT')
+    2. Transportista → Cliente  (reviewer_role='TRANSPORTER')
+
+  La unicidad se garantiza con unique_together = [("shipment", "reviewer_role")].
   La puntuación va de 1 a 5.
 
   is_active permite ocultar una calificación sin eliminarla.
   updated_at permite corregir una calificación ingresada por error.
   """
 
+  REVIEWER_ROLE_CHOICES = [
+      ('CLIENT', 'Cliente'),
+      ('TRANSPORTER', 'Transportista'),
+  ]
+
   id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-  shipment = models.OneToOneField(
+  shipment = models.ForeignKey(
       Shipment,
       on_delete=models.CASCADE,
-      related_name='rating',
+      related_name='ratings',
   )
-  shipment_id: uuid.UUID
   client = models.ForeignKey(
       Client,
       on_delete=models.RESTRICT,
@@ -35,6 +43,10 @@ class Rating(models.Model):
       Transporter,
       on_delete=models.RESTRICT,
       related_name='ratings_received',
+  )
+  reviewer_role = models.CharField(
+      max_length=20,
+      choices=REVIEWER_ROLE_CHOICES,
   )
   score = models.SmallIntegerField(
       validators=[MinValueValidator(1), MaxValueValidator(5)],
@@ -52,7 +64,11 @@ class Rating(models.Model):
             condition=models.Q(score__gte=1) & models.Q(score__lte=5),
             name='ratings_score_between_1_5',
         ),
+        models.UniqueConstraint(
+            fields=['shipment', 'reviewer_role'],
+            name='ratings_unique_per_shipment_role',
+        ),
     ]
 
   def __str__(self):
-    return f'Rating<{self.shipment_id}> {self.score}★'
+    return f'Rating<{self.shipment_id}> {self.reviewer_role} {self.score}★'

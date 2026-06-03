@@ -151,7 +151,7 @@ export function NewShipment() {
         return;
       }
 
-      const backendUrl = import.meta.env.VITE_API_URL_BACKEND || '';
+      const backendUrl = (import.meta as unknown as { env: { VITE_API_URL_BACKEND?: string } }).env?.VITE_API_URL_BACKEND || '';
       const cleanBackendUrl = backendUrl.endsWith('/') ? backendUrl.slice(0, -1) : backendUrl;
       let wsUrl = '';
       if (cleanBackendUrl.startsWith('http')) {

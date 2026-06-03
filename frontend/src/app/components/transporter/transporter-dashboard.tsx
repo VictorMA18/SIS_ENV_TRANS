@@ -15,8 +15,13 @@ import {
 import {
   formatShipmentDate,
   getInitials,
-  getAvatarColor
+  getAvatarColor,
+  formatApiError
 } from '../../lib/shipment-utils';
+import { ApiError } from '../../lib/api';
+import type { TransporterShipmentSelection } from '../../types/shipment';
+import { useNotificationPolling } from '../../hooks/useNotificationPolling';
+
 
 const STATUS_CFG: Record<string, { bg: string; text: string; dot: string; label: string }> = {
   REGISTRADO: { bg: 'bg-gray-50', text: 'text-gray-700', dot: 'bg-gray-400', label: 'Registrado' },
@@ -47,7 +52,10 @@ export function TransporterDashboard() {
   const [profileError, setProfileError] = useState<string | null>(null);
 
   // Modal / Interaction states
-  const [selectedSelection, setSelectedSelection] = useState<any | null>(null);
+  const [selectedSelection, setSelectedSelection] = useState<TransporterShipmentSelection | null>(null);
+
+  // Polling de notificaciones periódico seguro
+  useNotificationPolling({ enabled: true });
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
 
@@ -100,7 +108,7 @@ export function TransporterDashboard() {
     try {
       const data = await fetchTransporterProfile(user.id);
       setProfile(data);
-    } catch (err: any) {
+    } catch (err: unknown) {
       setProfileError('No se pudo cargar el perfil del transportista.');
     } finally {
       setProfileLoading(false);
@@ -119,9 +127,12 @@ export function TransporterDashboard() {
         is_available: nextVal,
       });
       setProfile(updated);
-    } catch (err: any) {
-      const msg = err.data?.is_available || 'Error al actualizar disponibilidad.';
-      setProfileError(Array.isArray(msg) ? msg[0] : msg);
+    } catch (err: unknown) {
+      const data = err instanceof ApiError ? err.data : null;
+      const msg = data && typeof data === 'object' && 'is_available' in data
+        ? (data as Record<string, unknown>).is_available
+        : 'Error al actualizar disponibilidad.';
+      setProfileError(Array.isArray(msg) ? msg[0] : String(msg));
     }
   };
 

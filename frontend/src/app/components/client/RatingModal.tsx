@@ -104,8 +104,9 @@ export function RatingModal() {
   if (!ratingModalOpen || !pendingRatingNotification) return null;
 
   const shipmentId = pendingRatingNotification.metadata?.shipment_id ?? '';
-  const transporterName =
-    pendingRatingNotification.metadata?.transporter_name ?? 'el transportista';
+  const transporterName = String(
+    pendingRatingNotification.metadata?.transporter_name ?? 'el transportista'
+  );
 
   const handleSubmit = async () => {
     if (score === 0) {

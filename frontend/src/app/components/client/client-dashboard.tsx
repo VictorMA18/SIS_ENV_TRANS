@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import {
   Package, CheckCircle, Users, Star, Plus, TrendingUp, Eye, ArrowRight,
@@ -10,6 +10,9 @@ import { useNotificationStore } from '../../stores/useNotificationStore';
 import { getStatusConfig, formatShipmentDate, formatRelativeTime } from '../../lib/shipment-utils';
 import type { ShipmentStatus, Shipment } from '../../types/shipment';
 import { RatingModal } from './RatingModal';
+import { useNotificationPolling } from '../../hooks/useNotificationPolling';
+import { fetchClientProfile, type ClientProfile } from '../../lib/shipment-api';
+
 
 // ─── Sub-components ─────────────────────────────────────────────────────────
 
@@ -47,10 +50,21 @@ export function ClientDashboard() {
     openRatingModal,
   } = useNotificationStore();
 
+  const [profile, setProfile] = useState<ClientProfile | null>(null);
+
+  // Activa el polling periódico seguro
+  useNotificationPolling({ enabled: true });
+
   useEffect(() => {
     fetchShipments();
     fetchNotifications();
-  }, [fetchShipments, fetchNotifications]);
+
+    if (user?.id) {
+      fetchClientProfile(user.id)
+        .then(setProfile)
+        .catch((err: unknown) => console.error('Error loading client profile:', err));
+    }
+  }, [fetchShipments, fetchNotifications, user?.id]);
 
   const computed = useMemo(() => computeStats(shipments), [shipments]);
 
@@ -128,7 +142,18 @@ export function ClientDashboard() {
           <h1 className="text-2xl font-extrabold text-[#0F172A] mb-0.5">
             Hola, {user?.name?.split(' ')[0]} 👋
           </h1>
-          <p className="text-gray-400 text-sm">Aquí está el resumen de tus envíos distritales</p>
+          <div className="flex flex-wrap items-center gap-2 mt-0.5">
+            <p className="text-gray-400 text-sm">Aquí está el resumen de tus envíos distritales</p>
+            {profile?.average_rating !== undefined && (
+              <>
+                <span className="text-gray-300 text-xs">•</span>
+                <span className="flex items-center gap-1 text-[11px] font-bold text-[#F59E0B] bg-amber-50 px-2 py-0.5 rounded-full border border-amber-100">
+                  <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+                  {profile.average_rating !== null ? Number(profile.average_rating).toFixed(2) : '5.00'} reputación cliente
+                </span>
+              </>
+            )}
+          </div>
         </div>
         <button
           onClick={() => navigate('/app/client/new-shipment')}

@@ -17,7 +17,7 @@ const STEPS = ['Datos del envío', 'Seleccionar transportista', 'Confirmación']
 // ─── Sub-components ─────────────────────────────────────────────────────────
 
 function Stars({ rating }: { rating: number | null }) {
-  const value = rating ?? 0;
+  const value = Number(rating ?? 0);
   return (
     <div className="flex items-center gap-0.5">
       {[1, 2, 3, 4, 5].map(i => (

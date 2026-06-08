@@ -692,11 +692,18 @@ export function TrackingPage() {
                 <div className="flex-1">
                   <p className="font-bold text-[#0F172A] text-base">{assignedTransporter.full_name}</p>
                   <div className="flex items-center gap-1 mt-0.5">
-                    {[1, 2, 3, 4, 5].map(i => (
-                      <Star key={i} className={`w-3.5 h-3.5 ${i <= Math.floor(assignedTransporter.average_rating ?? 0) ? 'fill-amber-400 text-amber-400' : 'text-gray-200'}`} />
-                    ))}
+                    {[1, 2, 3, 4, 5].map(i => {
+                      const ratingVal = assignedTransporter.average_rating !== null && assignedTransporter.average_rating !== undefined
+                        ? Number(assignedTransporter.average_rating)
+                        : 0;
+                      return (
+                        <Star key={i} className={`w-3.5 h-3.5 ${i <= Math.floor(ratingVal) ? 'fill-amber-400 text-amber-400' : 'text-gray-200'}`} />
+                      );
+                    })}
                     <span className="text-xs text-gray-500 ml-1">
-                      {assignedTransporter.average_rating?.toFixed(1) ?? '—'}
+                      {assignedTransporter.average_rating !== null && assignedTransporter.average_rating !== undefined
+                        ? Number(assignedTransporter.average_rating).toFixed(1)
+                        : '—'}
                     </span>
                   </div>
                   {assignedTransporter.license_number && (

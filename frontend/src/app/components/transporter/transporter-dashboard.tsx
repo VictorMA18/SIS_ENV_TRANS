@@ -309,11 +309,15 @@ export function TransporterDashboard() {
           },
           {
             label: 'Calificación promedio',
-            value: profile?.average_rating ? Number(profile.average_rating).toFixed(1) : '—',
+            value: profile?.average_rating !== null && profile?.average_rating !== undefined
+              ? Number(profile.average_rating).toFixed(1)
+              : '—',
             icon: Star,
             color: '#F59E0B',
             iconBg: 'bg-amber-100',
-            trend: profile?.average_rating ? 'Opiniones de clientes' : 'Sin calificaciones aún'
+            trend: profile?.average_rating !== null && profile?.average_rating !== undefined
+              ? 'Opiniones de clientes'
+              : 'Sin calificaciones aún'
           },
           {
             label: 'Solicitudes pendientes',

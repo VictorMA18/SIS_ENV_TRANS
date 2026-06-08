@@ -144,12 +144,12 @@ export function ClientDashboard() {
           </h1>
           <div className="flex flex-wrap items-center gap-2 mt-0.5">
             <p className="text-gray-400 text-sm">Aquí está el resumen de tus envíos distritales</p>
-            {profile?.average_rating !== undefined && (
+            {profile?.average_rating !== undefined && profile?.average_rating !== null && (
               <>
                 <span className="text-gray-300 text-xs">•</span>
                 <span className="flex items-center gap-1 text-[11px] font-bold text-[#F59E0B] bg-amber-50 px-2 py-0.5 rounded-full border border-amber-100">
                   <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
-                  {profile.average_rating !== null ? Number(profile.average_rating).toFixed(2) : '5.00'} reputación cliente
+                  {Number(profile.average_rating).toFixed(2)} reputación cliente
                 </span>
               </>
             )}

@@ -1,5 +1,9 @@
 /**
- * Store Zustand para notificaciones y calificaciones del cliente/transportista.
+ * Store Zustand para notificaciones y calificaciones.
+ *
+ * Arquitectura V2 (Híbrida REST + WebSocket Push):
+ *   - REST: fetchNotifications (carga inicial), markAsRead, markAllAsRead, submitRating.
+ *   - WebSocket: addNotification (push en tiempo real), setConnected (estado de conexión).
  */
 
 import { create } from 'zustand';
@@ -26,15 +30,32 @@ interface NotificationState {
   error: string | null;
   /** true si el modal de calificación está visible */
   ratingModalOpen: boolean;
+  /** Estado de la conexión WebSocket — para indicador visual */
+  isConnected: boolean;
 }
 
 interface NotificationActions {
+  // ─── REST ───────────────────────────────────────────────────────────────
   fetchNotifications: () => Promise<void>;
   markAsRead: (id: string) => Promise<void>;
   markAllAsRead: () => Promise<void>;
+
+  // ─── Rating Modal ───────────────────────────────────────────────────────
   openRatingModal: () => void;
   closeRatingModal: () => void;
   submitRating: (payload: RatingPayload) => Promise<void>;
+
+  // ─── WebSocket (llamadas desde el hook useNotifications) ────────────────
+  /** Actualiza el estado de conexión del WebSocket. */
+  setConnected: (connected: boolean) => void;
+  /**
+   * Inserta una notificación push en tiempo real.
+   * - Deduplicación por id (prepend + filter).
+   * - Incrementa unreadCount si la notificación no está leída.
+   * - Detecta RATING_REQUEST para abrir el modal automáticamente.
+   */
+  addNotification: (notification: AppNotification) => void;
+
   clearError: () => void;
 }
 
@@ -49,6 +70,9 @@ export const useNotificationStore = create<NotificationState & NotificationActio
     isSubmitting: false,
     error: null,
     ratingModalOpen: false,
+    isConnected: false,
+
+    // ─── REST: Carga inicial ──────────────────────────────────────────────
 
     fetchNotifications: async () => {
       set({ isLoading: true, error: null });
@@ -83,6 +107,8 @@ export const useNotificationStore = create<NotificationState & NotificationActio
       }
     },
 
+    // ─── REST: Marcar como leída ──────────────────────────────────────────
+
     markAsRead: async (id) => {
       try {
         await markNotificationReadApi(id);
@@ -99,6 +125,8 @@ export const useNotificationStore = create<NotificationState & NotificationActio
       }
     },
 
+    // ─── REST: Marcar todas como leídas ───────────────────────────────────
+
     markAllAsRead: async () => {
       try {
         await markAllNotificationsReadApi();
@@ -111,6 +139,8 @@ export const useNotificationStore = create<NotificationState & NotificationActio
         console.error('Error marking all notifications as read:', err);
       }
     },
+
+    // ─── Rating Modal ─────────────────────────────────────────────────────
 
     openRatingModal: () => set({ ratingModalOpen: true }),
     closeRatingModal: () => set({ ratingModalOpen: false }),
@@ -140,6 +170,44 @@ export const useNotificationStore = create<NotificationState & NotificationActio
         throw err;
       }
     },
+
+    // ─── WebSocket: Estado de conexión ────────────────────────────────────
+
+    setConnected: (connected) => set({ isConnected: connected }),
+
+    // ─── WebSocket: Push de notificación en tiempo real ───────────────────
+
+    addNotification: (notification) => {
+      const { notifications, unreadCount } = get();
+
+      // Guard defensivo: metadata nunca null
+      const safeNotification: AppNotification = {
+        ...notification,
+        metadata: notification.metadata ?? {},
+      };
+
+      // Deduplicación: prepend + filter por id
+      const updated = [
+        safeNotification,
+        ...notifications.filter((n) => n.id !== safeNotification.id),
+      ];
+
+      // Detectar RATING_REQUEST para abrir modal automáticamente
+      const isRating =
+        !safeNotification.is_read &&
+        safeNotification.metadata?.type === 'RATING_REQUEST' &&
+        safeNotification.metadata?.shipment_id;
+
+      set({
+        notifications: updated,
+        unreadCount: safeNotification.is_read ? unreadCount : unreadCount + 1,
+        ...(isRating
+          ? { pendingRatingNotification: safeNotification, ratingModalOpen: true }
+          : {}),
+      });
+    },
+
+    // ─── Utilidades ───────────────────────────────────────────────────────
 
     clearError: () => set({ error: null }),
   }),

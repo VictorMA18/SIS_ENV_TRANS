@@ -3,14 +3,14 @@ Routing WebSocket para la app shipments.
 
 Rutas disponibles:
     ws/shipments/available-transporters/  →  AvailableTransportersConsumer
-    ws/shipments/notifications/           →  TransporterNotificationsConsumer
+    ws/notifications/                     →  NotificationConsumer (universal)
 """
 
 from django.urls import re_path
 
 from apps.shipments.consumers import (
     AvailableTransportersConsumer,
-    TransporterNotificationsConsumer,
+    NotificationConsumer,
 )
 
 websocket_urlpatterns = [
@@ -19,7 +19,7 @@ websocket_urlpatterns = [
         AvailableTransportersConsumer.as_asgi(),
     ),
     re_path(
-        r"ws/shipments/notifications/$",
-        TransporterNotificationsConsumer.as_asgi(),
+        r"ws/notifications/$",
+        NotificationConsumer.as_asgi(),
     ),
 ]

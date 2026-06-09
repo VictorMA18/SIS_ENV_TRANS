@@ -5,12 +5,13 @@ AvailableTransportersConsumer:
     Transmite en tiempo real la lista de transportistas disponibles.
     URL: ws/shipments/available-transporters/?token=<JWT>
 
-TransporterNotificationsConsumer:
-    Canal personal por transportista para recibir notificaciones push.
-    URL: ws/shipments/notifications/?token=<JWT>
-    Cuando el backend crea un envío asignado a ese transportista,
-    envía un mensaje al grupo 'transporter_<user_id>' y éste lo
-    reenvía al cliente conectado.
+NotificationConsumer:
+    Consumer universal y simétrico de notificaciones en tiempo real.
+    Acepta conexiones de cualquier usuario autenticado (Cliente o Transportista).
+    URL: ws/notifications/?token=<JWT>
+    Cuando el worker de RabbitMQ crea una Notification en BD, despacha
+    el payload serializado al grupo 'user_<user_id>' y éste lo
+    reenvía al cliente WebSocket al instante.
 """
 
 import json
@@ -147,44 +148,44 @@ class AvailableTransportersConsumer(AsyncJsonWebsocketConsumer):
 
 
 # ---------------------------------------------------------------------------
-# Consumer personal de notificaciones por transportista
+# Consumer universal de notificaciones (Clientes + Transportistas)
 # ---------------------------------------------------------------------------
 
 
-class TransporterNotificationsConsumer(AsyncJsonWebsocketConsumer):
+class NotificationConsumer(AsyncJsonWebsocketConsumer):
     """
-    WebSocket: ws/shipments/notifications/?token=<JWT>
+    WebSocket: ws/notifications/?token=<JWT>
+
+    Consumer unificado y simétrico para notificaciones en tiempo real.
+    Acepta conexiones de cualquier usuario autenticado (Cliente o Transportista)
+    y lo une a un grupo exclusivo basado en su ID de usuario.
 
     Comportamiento:
-        - Solo acepta conexiones de usuarios autenticados con rol TRANSPORTER.
-        - Al conectar: se une al grupo personal 'transporter_<user_id>'.
-        - Al desconectar: abandona el grupo.
-        - Recibe mensajes del grupo (emitidos desde services.py) y los
-          reenvía directamente al cliente WebSocket.
+        - Al conectar: valida el token JWT del scope.
+          · Si es AnonymousUser → cierra la conexión (código 4001).
+          · Si es un usuario válido → se une al grupo 'user_<user_id>'.
+        - Al desconectar: abandona el grupo personal.
+        - Recibe mensajes del grupo (emitidos desde rabbitmq_consumer) y los
+          reenvía directamente al WebSocket del cliente.
+        - Acepta pings del cliente para keep-alive.
 
-    Tipos de mensaje recibidos desde el backend:
+    Payload enviado al cliente (desde el handler send_notification):
         {
-            "type": "new_shipment",          # handler: new_shipment()
-            "shipment_id": "<uuid>",
-            "message": "Tienes una nueva solicitud de envío",
+            "type": "new_notification",
+            "notification": { ... }   ← datos serializados de la Notification
         }
     """
 
     def _group_name(self):
-        """Nombre del grupo personal del transportista."""
-        return f"transporter_{self.scope['user'].id}"
+        """Nombre del grupo personal del usuario (universal)."""
+        return f"user_{self.scope['user'].id}"
 
     async def connect(self):
-        """Acepta solo transportistas autenticados y los une a su grupo personal."""
+        """Acepta usuarios autenticados (cualquier rol) y los une a su grupo personal."""
         user = self.scope.get("user", AnonymousUser())
 
         if isinstance(user, AnonymousUser) or not user.is_authenticated:
             await self.close(code=4001)
-            return
-
-        # Solo transportistas (o admins para testing)
-        if not (user.is_transporter or user.is_admin):
-            await self.close(code=4003)
             return
 
         await self.channel_layer.group_add(
@@ -211,22 +212,29 @@ class TransporterNotificationsConsumer(AsyncJsonWebsocketConsumer):
             await self.send_json({"type": "pong"})
 
     # ------------------------------------------------------------------
-    # Handlers de mensajes de grupo (llamados por channel_layer.group_send)
+    # Handler de Channels (llamado por channel_layer.group_send)
     # ------------------------------------------------------------------
 
-    async def new_shipment(self, event):
+    async def send_notification(self, event):
         """
-        Reenvía al cliente WebSocket la notificación de nuevo envío.
+        Recibe el payload de notificación procesado por el worker de RabbitMQ
+        y lo envía al WebSocket del usuario al instante.
 
         Payload al cliente:
             {
-                "type": "new_shipment",
-                "shipment_id": "<uuid>",
-                "message": "Tienes una nueva solicitud de envío",
+                "type": "new_notification",
+                "notification": {
+                    "id": "<uuid>",
+                    "title": "...",
+                    "message": "...",
+                    "status": "ENVIADO",
+                    "metadata": { ... },
+                    "is_read": false,
+                    "created_at": "2026-..."
+                }
             }
         """
         await self.send_json({
-            "type": "new_shipment",
-            "shipment_id": event.get("shipment_id", ""),
-            "message": event.get("message", "Tienes una nueva solicitud de envío"),
+            "type": "new_notification",
+            "notification": event["notification"],
         })

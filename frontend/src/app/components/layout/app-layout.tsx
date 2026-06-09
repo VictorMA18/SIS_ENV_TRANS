@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/auth';
 import { useNotificationStore } from '../../stores/useNotificationStore';
-import { useNotificationPolling } from '../../hooks/useNotificationPolling';
+import { useNotifications } from '../../hooks/useNotifications';
 import { formatRelativeTime } from '../../lib/shipment-utils';
 import type { AppNotification } from '../../types/shipment';
 
@@ -32,12 +32,13 @@ export function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
 
-  // Hook de polling de notificaciones (sólo si está autenticado e inicializado)
-  useNotificationPolling({ enabled: isAuthenticated && !isInitializing });
+  // Hook unificado de notificaciones: REST (carga inicial) + WebSocket (push)
+  useNotifications({ enabled: isAuthenticated && !isInitializing });
 
   const {
     notifications,
     unreadCount,
+    isConnected,
     markAsRead,
     markAllAsRead,
     openRatingModal,
@@ -172,6 +173,13 @@ export function AppLayout() {
                 {unreadCount > 0 && (
                   <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-[#F97316] rounded-full border border-white" />
                 )}
+                {/* Indicador de conexión WebSocket */}
+                <span
+                  className={`absolute bottom-1 right-1 w-1.5 h-1.5 rounded-full border border-white transition-colors ${
+                    isConnected ? 'bg-green-500' : 'bg-red-400'
+                  }`}
+                  title={isConnected ? 'Conectado en tiempo real' : 'Desconectado'}
+                />
               </button>
               {notifOpen && (
                 <>

@@ -191,6 +191,11 @@ export interface TransporterShipmentSelection {
   updated_at: string;
 }
 
+/**
+ * Metadata extensible de una notificación.
+ * Contrato V2: el backend GARANTIZA que `metadata` nunca es null — mínimo `{}`.
+ * La index signature permite campos futuros sin romper el contrato.
+ */
 export interface NotificationMetadata {
   type?: string;
   shipment_id?: string;
@@ -199,12 +204,17 @@ export interface NotificationMetadata {
   [key: string]: unknown;
 }
 
+/**
+ * Notificación del sistema.
+ * Contrato V2 §4: mismo formato en REST (`GET /api/notifications/`) y
+ * en el payload WebSocket (`{ type: "new_notification", notification: {...} }`).
+ */
 export interface AppNotification {
   id: string;
   title: string;
   message: string;
   status: 'PENDIENTE' | 'ENVIADO' | 'FALLIDO' | string;
-  metadata: NotificationMetadata;
+  metadata: NotificationMetadata;  // NUNCA null — el backend garantiza {}
   is_read: boolean;
   created_at: string;
 }

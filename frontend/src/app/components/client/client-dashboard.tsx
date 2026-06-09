@@ -10,7 +10,6 @@ import { useNotificationStore } from '../../stores/useNotificationStore';
 import { getStatusConfig, formatShipmentDate, formatRelativeTime } from '../../lib/shipment-utils';
 import type { ShipmentStatus, Shipment } from '../../types/shipment';
 import { RatingModal } from './RatingModal';
-import { useNotificationPolling } from '../../hooks/useNotificationPolling';
 import { fetchClientProfile, type ClientProfile } from '../../lib/shipment-api';
 
 
@@ -52,8 +51,7 @@ export function ClientDashboard() {
 
   const [profile, setProfile] = useState<ClientProfile | null>(null);
 
-  // Activa el polling periódico seguro
-  useNotificationPolling({ enabled: true });
+
 
   useEffect(() => {
     fetchShipments();

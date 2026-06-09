@@ -1,10 +1,10 @@
-import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import {
   CheckCircle, Star, Package, Truck, TrendingUp, Check, X,
   ChevronDown, ArrowRight, MapPin, Activity, FileText, Camera,
   AlertTriangle, Loader2, Coins, Calendar, Clock, Sparkles, Bell
 } from 'lucide-react';
-import { useTransporterNotifications } from '../../hooks/useTransporterNotifications';
+import { useNotificationStore } from '../../stores/useNotificationStore';
 import { useAuth } from '../../context/auth';
 import { useShipmentListStore } from '../../stores/useShipmentListStore';
 import {
@@ -19,8 +19,7 @@ import {
   formatApiError
 } from '../../lib/shipment-utils';
 import { ApiError } from '../../lib/api';
-import type { TransporterShipmentSelection } from '../../types/shipment';
-import { useNotificationPolling } from '../../hooks/useNotificationPolling';
+import type { TransporterShipmentSelection, AppNotification } from '../../types/shipment';
 
 
 const STATUS_CFG: Record<string, { bg: string; text: string; dot: string; label: string }> = {
@@ -54,8 +53,6 @@ export function TransporterDashboard() {
   // Modal / Interaction states
   const [selectedSelection, setSelectedSelection] = useState<TransporterShipmentSelection | null>(null);
 
-  // Polling de notificaciones periódico seguro
-  useNotificationPolling({ enabled: true });
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
 
@@ -69,9 +66,13 @@ export function TransporterDashboard() {
   // Dropdown states for active shipment action menus
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
-  // Estado del banner de notificación
+  // Estado del banner de notificación push
   const [notification, setNotification] = useState<string | null>(null);
   const notifTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Suscripción a la store unificada de notificaciones (WebSocket push)
+  const storeNotifications = useNotificationStore((s) => s.notifications);
+  const prevNotifCountRef = useRef<number>(0);
 
   // Load data on mount
   useEffect(() => {
@@ -81,20 +82,36 @@ export function TransporterDashboard() {
     }
   }, [user?.id, fetchTransporterSelections]);
 
-  // --- Notificaciones en tiempo real ---
-  const handleNewShipment = useCallback(({ message }: { shipmentId: string; message: string }) => {
-    // Refrescar la lista automáticamente
-    fetchTransporterSelections();
-    // Mostrar banner por 8 segundos
-    if (notifTimerRef.current) clearTimeout(notifTimerRef.current);
-    setNotification(message);
-    notifTimerRef.current = setTimeout(() => setNotification(null), 8000);
-  }, [fetchTransporterSelections]);
+  // --- Reactivo a notificaciones push vía store unificada ---
+  // Cuando llegan nuevas notificaciones relevantes para el transportista,
+  // refrescar la lista y mostrar el banner.
+  useEffect(() => {
+    // Ignorar la carga inicial (prevCount === 0)
+    if (prevNotifCountRef.current === 0) {
+      prevNotifCountRef.current = storeNotifications.length;
+      return;
+    }
 
-  useTransporterNotifications({
-    enabled: user?.role === 'transporter',
-    onNewShipment: handleNewShipment,
-  });
+    // Si hay más notificaciones que antes, una nueva llegó
+    if (storeNotifications.length > prevNotifCountRef.current) {
+      const latest = storeNotifications[0] as AppNotification | undefined;
+      const metaType = latest?.metadata?.type;
+
+      // Tipos relevantes para el transportista
+      const transporterTypes = ['SHIPMENT_CREATED', 'TRANSPORTER_SELECTED', 'DELIVERY_CONFIRMED', 'SHIPMENT_CANCELLED'];
+
+      if (latest && transporterTypes.includes(metaType ?? '')) {
+        // Refrescar la lista automáticamente
+        fetchTransporterSelections();
+        // Mostrar banner por 8 segundos
+        if (notifTimerRef.current) clearTimeout(notifTimerRef.current);
+        setNotification(latest.message);
+        notifTimerRef.current = setTimeout(() => setNotification(null), 8000);
+      }
+    }
+
+    prevNotifCountRef.current = storeNotifications.length;
+  }, [storeNotifications, fetchTransporterSelections]);
 
   // Limpiar timer al desmontar
   useEffect(() => () => {

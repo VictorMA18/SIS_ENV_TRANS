@@ -3,6 +3,8 @@ Django Management Command: rabbitmq_consumer
 
 Background Worker que consume eventos del exchange 'shipment_events'
 de RabbitMQ y crea las Notifications correspondientes en la base de datos.
+Tras cada inserción, despacha la notificación serializada al canal
+WebSocket personal del destinatario a través de Django Channels.
 
 Uso:
     python manage.py rabbitmq_consumer
@@ -15,7 +17,9 @@ Arquitectura:
        a. Parsea el JSON del evento.
        b. Resuelve el destinatario según el tipo de evento.
        c. Crea la Notification con FK al SystemEvent original.
-       d. ACK el mensaje.
+       d. Serializa la Notification y la envía al grupo 'user_<recipient_id>'
+          de Django Channels para push instantáneo por WebSocket.
+       e. ACK el mensaje.
 
 El consumer es idempotente: si el SystemEvent ya tiene una Notification
 para el mismo destinatario, no crea duplicados.
@@ -27,15 +31,21 @@ import signal
 import sys
 
 import pika
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 from django.conf import settings
 from django.core.management.base import BaseCommand
 
 from apps.events.models.system_event import SystemEvent
 from apps.notifications.models.notification import Notification
+from apps.notifications.views import NotificationSerializer
 from common.enums.event import EventType
 from common.enums.notification import NotificationStatus
 
 logger = logging.getLogger(__name__)
+
+# Inicializar el channel layer de Django Channels
+channel_layer = get_channel_layer()
 
 
 # ---------------------------------------------------------------------------
@@ -258,7 +268,7 @@ def _on_message(ch, method, properties, body):
                 )
                 continue
 
-            Notification.objects.create(
+            notification = Notification.objects.create(
                 event=system_event,
                 recipient_type=notif_data["recipient_type"],
                 recipient_id=notif_data["recipient_id"],
@@ -274,6 +284,31 @@ def _on_message(ch, method, properties, body):
                 notif_data["recipient_type"],
                 notif_data["recipient_id"],
             )
+
+            # ---------------------------------------------------------
+            # Push instantáneo vía Django Channels (WebSocket)
+            # ---------------------------------------------------------
+            recipient_id = str(notif_data["recipient_id"])
+            notification_serialized = NotificationSerializer(notification).data
+
+            try:
+                async_to_sync(channel_layer.group_send)(
+                    f"user_{recipient_id}",
+                    {
+                        "type": "send_notification",
+                        "notification": notification_serialized,
+                    },
+                )
+                logger.info(
+                    "Push WS enviado a user_%s",
+                    recipient_id,
+                )
+            except Exception:
+                logger.exception(
+                    "Error enviando push WS a user_%s. "
+                    "La notificación ya fue guardada en BD.",
+                    recipient_id,
+                )
 
         ch.basic_ack(delivery_tag=method.delivery_tag)
 

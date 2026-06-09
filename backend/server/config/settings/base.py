@@ -94,26 +94,18 @@ ASGI_APPLICATION = 'config.asgi.application'
 
 CHANNEL_LAYERS = {
     "default": {
-        "BACKEND": "channels.layers.InMemoryChannelLayer",
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [
+                (
+                    config("REDIS_HOST", default="127.0.0.1"),
+                    config("REDIS_PORT", default=6379, cast=int),
+                )
+            ],
+        },
     },
 }
 
-# TODO: CONFIGURACIÓN PARA PRODUCCIÓN (DOCKER/DEPLOY)
-# Reemplazar InMemoryChannelLayer por Redis para escalabilidad multi-proceso.
-#
-# CHANNEL_LAYERS = {
-#     "default": {
-#         "BACKEND": "channels_redis.core.RedisChannelLayer",
-#         "CONFIG": {
-#             "hosts": [
-#                 (
-#                     config("REDIS_HOST", default="127.0.0.1"),
-#                     config("REDIS_PORT", default=6379, cast=int),
-#                 )
-#             ],
-#         },
-#     },
-# }
 
 
 # Database

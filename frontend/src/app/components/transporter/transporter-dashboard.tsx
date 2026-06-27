@@ -1,9 +1,10 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import {
   CheckCircle, Star, Package, Truck, TrendingUp, Check, X,
   ChevronDown, ArrowRight, MapPin, Activity, FileText, Camera,
-  AlertTriangle, Loader2, Coins, Calendar, Clock, Sparkles
+  AlertTriangle, Loader2, Coins, Calendar, Clock, Sparkles, Bell
 } from 'lucide-react';
+import { useNotificationStore } from '../../stores/useNotificationStore';
 import { useAuth } from '../../context/auth';
 import { useShipmentListStore } from '../../stores/useShipmentListStore';
 import {
@@ -14,8 +15,12 @@ import {
 import {
   formatShipmentDate,
   getInitials,
-  getAvatarColor
+  getAvatarColor,
+  formatApiError
 } from '../../lib/shipment-utils';
+import { ApiError } from '../../lib/api';
+import type { TransporterShipmentSelection, AppNotification } from '../../types/shipment';
+
 
 const STATUS_CFG: Record<string, { bg: string; text: string; dot: string; label: string }> = {
   REGISTRADO: { bg: 'bg-gray-50', text: 'text-gray-700', dot: 'bg-gray-400', label: 'Registrado' },
@@ -46,7 +51,8 @@ export function TransporterDashboard() {
   const [profileError, setProfileError] = useState<string | null>(null);
 
   // Modal / Interaction states
-  const [selectedSelection, setSelectedSelection] = useState<any | null>(null);
+  const [selectedSelection, setSelectedSelection] = useState<TransporterShipmentSelection | null>(null);
+
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
 
@@ -60,6 +66,14 @@ export function TransporterDashboard() {
   // Dropdown states for active shipment action menus
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
+  // Estado del banner de notificación push
+  const [notification, setNotification] = useState<string | null>(null);
+  const notifTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Suscripción a la store unificada de notificaciones (WebSocket push)
+  const storeNotifications = useNotificationStore((s) => s.notifications);
+  const prevNotifCountRef = useRef<number>(0);
+
   // Load data on mount
   useEffect(() => {
     if (user?.id) {
@@ -68,6 +82,42 @@ export function TransporterDashboard() {
     }
   }, [user?.id, fetchTransporterSelections]);
 
+  // --- Reactivo a notificaciones push vía store unificada ---
+  // Cuando llegan nuevas notificaciones relevantes para el transportista,
+  // refrescar la lista y mostrar el banner.
+  useEffect(() => {
+    // Ignorar la carga inicial (prevCount === 0)
+    if (prevNotifCountRef.current === 0) {
+      prevNotifCountRef.current = storeNotifications.length;
+      return;
+    }
+
+    // Si hay más notificaciones que antes, una nueva llegó
+    if (storeNotifications.length > prevNotifCountRef.current) {
+      const latest = storeNotifications[0] as AppNotification | undefined;
+      const metaType = latest?.metadata?.type;
+
+      // Tipos relevantes para el transportista
+      const transporterTypes = ['SHIPMENT_CREATED', 'TRANSPORTER_SELECTED', 'DELIVERY_CONFIRMED', 'SHIPMENT_CANCELLED'];
+
+      if (latest && transporterTypes.includes(metaType ?? '')) {
+        // Refrescar la lista automáticamente
+        fetchTransporterSelections();
+        // Mostrar banner por 8 segundos
+        if (notifTimerRef.current) clearTimeout(notifTimerRef.current);
+        setNotification(latest.message);
+        notifTimerRef.current = setTimeout(() => setNotification(null), 8000);
+      }
+    }
+
+    prevNotifCountRef.current = storeNotifications.length;
+  }, [storeNotifications, fetchTransporterSelections]);
+
+  // Limpiar timer al desmontar
+  useEffect(() => () => {
+    if (notifTimerRef.current) clearTimeout(notifTimerRef.current);
+  }, []);
+
   const loadProfile = async () => {
     if (!user?.id) return;
     setProfileLoading(true);
@@ -75,7 +125,7 @@ export function TransporterDashboard() {
     try {
       const data = await fetchTransporterProfile(user.id);
       setProfile(data);
-    } catch (err: any) {
+    } catch (err: unknown) {
       setProfileError('No se pudo cargar el perfil del transportista.');
     } finally {
       setProfileLoading(false);
@@ -94,9 +144,12 @@ export function TransporterDashboard() {
         is_available: nextVal,
       });
       setProfile(updated);
-    } catch (err: any) {
-      const msg = err.data?.is_available || 'Error al actualizar disponibilidad.';
-      setProfileError(Array.isArray(msg) ? msg[0] : msg);
+    } catch (err: unknown) {
+      const data = err instanceof ApiError ? err.data : null;
+      const msg = data && typeof data === 'object' && 'is_available' in data
+        ? (data as Record<string, unknown>).is_available
+        : 'Error al actualizar disponibilidad.';
+      setProfileError(Array.isArray(msg) ? msg[0] : String(msg));
     }
   };
 
@@ -223,6 +276,26 @@ export function TransporterDashboard() {
         )}
       </div>
 
+      {/* Banner de notificación en tiempo real */}
+      {notification && (
+        <div className="mb-5 flex items-center gap-3 px-4 py-3 bg-indigo-50 border border-indigo-200 rounded-[14px] shadow-sm animate-pulse-once">
+          <div className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center flex-shrink-0">
+            <Bell className="w-4 h-4 text-indigo-600" />
+          </div>
+          <div className="flex-1">
+            <p className="text-sm font-bold text-indigo-800">Nueva solicitud de envío</p>
+            <p className="text-xs text-indigo-600">{notification} — la lista ya fue actualizada.</p>
+          </div>
+          <button
+            onClick={() => { setNotification(null); if (notifTimerRef.current) clearTimeout(notifTimerRef.current); }}
+            className="text-indigo-400 hover:text-indigo-700 transition-colors p-1"
+            aria-label="Cerrar notificación"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Error Displays */}
       {(profileError || storeError) && (
         <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-[12px] flex items-start gap-3">
@@ -253,11 +326,15 @@ export function TransporterDashboard() {
           },
           {
             label: 'Calificación promedio',
-            value: profile?.average_rating ? Number(profile.average_rating).toFixed(1) : '—',
+            value: profile?.average_rating !== null && profile?.average_rating !== undefined
+              ? Number(profile.average_rating).toFixed(1)
+              : '—',
             icon: Star,
             color: '#F59E0B',
             iconBg: 'bg-amber-100',
-            trend: profile?.average_rating ? 'Opiniones de clientes' : 'Sin calificaciones aún'
+            trend: profile?.average_rating !== null && profile?.average_rating !== undefined
+              ? 'Opiniones de clientes'
+              : 'Sin calificaciones aún'
           },
           {
             label: 'Solicitudes pendientes',

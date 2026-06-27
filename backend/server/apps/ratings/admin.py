@@ -5,8 +5,6 @@ from apps.ratings.models.rating import Rating
 
 @admin.register(Rating)
 class RatingAdmin(admin.ModelAdmin):
-  list_display = ("id", "shipment", "client", "transporter", "score", "comment", "is_active", "created_at", "updated_at")
-  list_filter = ("is_active",)
-  search_fields = ( "id", "shipment", "client", "transporter", "score")
-    
-
+  list_display = ("id", "shipment", "client", "transporter", "reviewer_role", "score", "comment", "is_active", "created_at")
+  list_filter = ("is_active", "reviewer_role")
+  search_fields = ("id", "shipment__id", "reviewer_role", "score")

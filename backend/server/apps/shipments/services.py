@@ -7,19 +7,58 @@ Contiene toda la lógica de negocio transaccional del ciclo de vida:
   - Iniciar tránsito / Confirmar entrega (Transportista)
   - Cancelar envío (Cliente)
 
-Todas las operaciones se envuelven en transaction.atomic() y registran
-hitos inmutables en shipment_tracking (append-only).
+ARQUITECTURA ESTRICTA:
+  1. Todas las operaciones se envuelven en transaction.atomic().
+  2. Todo hito registra un ShipmentTracking (append-only).
+  3. Todo hito crea un SystemEvent inmutable.
+  4. Después del commit, el evento se publica en RabbitMQ.
+  5. NUNCA se crea un Notification directamente aquí.
+     Las notificaciones las genera el consumer de RabbitMQ.
 """
 
+import logging
+
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 from django.db import transaction
 from django.utils import timezone
 from rest_framework import serializers
 
+from apps.events.models.system_event import SystemEvent
 from apps.shipments.models.shipment import Shipment
 from apps.shipments.models.shipment_selection import ShipmentSelection
 from apps.shipments.models.shipment_tracking import ShipmentTracking
 from apps.transporters.models.transporter import Transporter
+from common.enums.event import EventType
 from common.enums.shipment import ShipmentStatus, SelectionStatus
+from common.messaging.rabbitmq_publisher import publish_event
+
+logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Helper: publicar evento después del commit
+# ---------------------------------------------------------------------------
+
+
+def _publish_after_commit(event):
+    """
+    Programa la publicación del evento en RabbitMQ después del commit.
+    Si no estamos dentro de un bloque atómico, publica inmediatamente.
+    """
+    def _do_publish():
+        try:
+            publish_event(event)
+        except Exception:
+            logger.exception(
+                "Error publicando evento %s [%s] en RabbitMQ (post-commit).",
+                event.event_type, event.id,
+            )
+
+    if transaction.get_connection().in_atomic_block:
+        transaction.on_commit(_do_publish)
+    else:
+        _do_publish()
 
 
 # ---------------------------------------------------------------------------
@@ -32,12 +71,14 @@ def create_shipment_with_selection(*, client, shipment_data, transporter_id):
     Crea un envío con su selección de transportista y registros de
     tracking dentro de una transacción atómica.
 
-    Secuencia (5 pasos):
+    Secuencia (7 pasos):
         1. INSERT Shipment → estado REGISTRADO
         2. INSERT ShipmentTracking → estado REGISTRADO
-        3. UPDATE Shipment → estado SELECCIONADO
-        4. INSERT ShipmentSelection → estado PENDIENTE
-        5. INSERT ShipmentTracking → estado SELECCIONADO
+        3. INSERT SystemEvent → SHIPMENT_CREATED
+        4. UPDATE Shipment → estado SELECCIONADO
+        5. INSERT ShipmentSelection → estado PENDIENTE
+        6. INSERT ShipmentTracking → estado SELECCIONADO
+        7. INSERT SystemEvent → TRANSPORTER_SELECTED
     """
     # --- Validación defensiva del transportista ---
     try:
@@ -57,7 +98,7 @@ def create_shipment_with_selection(*, client, shipment_data, transporter_id):
             {"transporter_id": "El transportista seleccionado no está disponible."}
         )
 
-    # --- Transacción atómica de creación (5 pasos) ---
+    # --- Transacción atómica de creación (7 pasos) ---
     with transaction.atomic():
         # 1. Crear Shipment en estado REGISTRADO
         shipment = Shipment.objects.create(
@@ -72,22 +113,68 @@ def create_shipment_with_selection(*, client, shipment_data, transporter_id):
             status=ShipmentStatus.REGISTERED,
         )
 
-        # 3. Cambiar estado del Shipment a SELECCIONADO
+        # 3. SystemEvent → SHIPMENT_CREATED
+        event_created = SystemEvent.objects.create(
+            event_type=EventType.SHIPMENT_CREATED,
+            shipment=shipment,
+            client=client,
+            transporter=transporter,
+            payload={
+                "origin_address": shipment.origin_address,
+                "destination_address": shipment.destination_address,
+                "client_name": client.user.full_name,
+            },
+        )
+
+        # 4. Cambiar estado del Shipment a SELECCIONADO
         shipment.status = ShipmentStatus.SELECTED
         shipment.save(update_fields=["status", "updated_at"])
 
-        # 4. Crear ShipmentSelection vinculada al transportista → PENDIENTE
+        # 5. Crear ShipmentSelection vinculada al transportista → PENDIENTE
         ShipmentSelection.objects.create(
             shipment=shipment,
             transporter=transporter,
             status=SelectionStatus.PENDING,
         )
 
-        # 5. Segundo registro de tracking → SELECCIONADO
+        # 6. Segundo registro de tracking → SELECCIONADO
         ShipmentTracking.objects.create(
             shipment=shipment,
             status=ShipmentStatus.SELECTED,
         )
+
+        # 7. SystemEvent → TRANSPORTER_SELECTED
+        event_selected = SystemEvent.objects.create(
+            event_type=EventType.TRANSPORTER_SELECTED,
+            shipment=shipment,
+            client=client,
+            transporter=transporter,
+            payload={
+                "origin_address": shipment.origin_address,
+                "destination_address": shipment.destination_address,
+                "transporter_name": transporter.user.full_name,
+                "client_name": client.user.full_name,
+            },
+        )
+
+    # --- Post-commit: publicar en RabbitMQ ---
+    _publish_after_commit(event_created)
+    _publish_after_commit(event_selected)
+
+    # --- Notificación push WebSocket al transportista ---
+    try:
+        channel_layer = get_channel_layer()
+        async_to_sync(channel_layer.group_send)(
+            f"transporter_{transporter.user_id}",
+            {
+                "type": "new_shipment",
+                "shipment_id": str(shipment.id),
+                "message": "Tienes una nueva solicitud de envío",
+            },
+        )
+    except Exception:
+        # No fallar el flujo principal si el WebSocket no está disponible
+        pass
 
     return shipment
 
@@ -144,6 +231,18 @@ def accept_selection(*, user, selection_id):
             notes="Transportista aceptó el envío.",
         )
 
+        # 4. SystemEvent → SHIPMENT_ACCEPTED
+        event = SystemEvent.objects.create(
+            event_type=EventType.SHIPMENT_ACCEPTED,
+            shipment=shipment,
+            client=shipment.client,
+            transporter=selection.transporter,
+            payload={
+                "transporter_name": selection.transporter.user.full_name,
+            },
+        )
+
+    _publish_after_commit(event)
     return selection
 
 
@@ -194,6 +293,19 @@ def reject_selection(*, user, selection_id, rejection_reason=""):
             notes=f"Transportista rechazó el envío. Razón: {rejection_reason or 'No especificada'}",
         )
 
+        # 4. SystemEvent → SHIPMENT_REJECTED
+        event = SystemEvent.objects.create(
+            event_type=EventType.SHIPMENT_REJECTED,
+            shipment=shipment,
+            client=shipment.client,
+            transporter=selection.transporter,
+            payload={
+                "rejection_reason": rejection_reason or "No especificada",
+                "transporter_name": selection.transporter.user.full_name,
+            },
+        )
+
+    _publish_after_commit(event)
     return selection
 
 
@@ -237,6 +349,19 @@ def start_transit(*, user, selection_id, location_data=None):
             notes="Transportista inició el tránsito.",
         )
 
+        # 3. SystemEvent → SHIPMENT_IN_TRANSIT
+        event = SystemEvent.objects.create(
+            event_type=EventType.SHIPMENT_IN_TRANSIT,
+            shipment=shipment,
+            client=shipment.client,
+            transporter=selection.transporter,
+            payload={
+                "transporter_name": selection.transporter.user.full_name,
+                "location": location_data.get("location", ""),
+            },
+        )
+
+    _publish_after_commit(event)
     return selection
 
 
@@ -251,6 +376,9 @@ def confirm_delivery(*, user, selection_id, location_data=None, notes=""):
 
     Transición:
         Shipment: EN_TRANSITO → ENTREGADO
+
+    NOTA: La notificación al cliente para calificar se crea
+    asincrónicamente por el consumer de RabbitMQ, NO aquí.
     """
     selection = _get_own_selection(user=user, selection_id=selection_id)
     shipment = selection.shipment
@@ -280,6 +408,20 @@ def confirm_delivery(*, user, selection_id, location_data=None, notes=""):
             notes=notes or "Transportista confirmó la entrega.",
         )
 
+        # 3. SystemEvent → SHIPMENT_DELIVERED
+        event = SystemEvent.objects.create(
+            event_type=EventType.SHIPMENT_DELIVERED,
+            shipment=shipment,
+            client=shipment.client,
+            transporter=selection.transporter,
+            payload={
+                "transporter_name": selection.transporter.user.full_name,
+                "origin_address": shipment.origin_address,
+                "destination_address": shipment.destination_address,
+            },
+        )
+
+    _publish_after_commit(event)
     return selection
 
 
@@ -326,6 +468,14 @@ def cancel_shipment(*, user, shipment_id, cancellation_reason=""):
             )
         })
 
+    # Obtener el transportista de la selección activa (si existe)
+    active_selection = ShipmentSelection.objects.filter(
+        shipment=shipment,
+        status__in=[SelectionStatus.PENDING, SelectionStatus.ACCEPTED],
+    ).select_related("transporter", "transporter__user").first()
+
+    transporter = active_selection.transporter if active_selection else None
+
     with transaction.atomic():
         # 1. Cancelar el shipment
         shipment.status = ShipmentStatus.CANCELLED
@@ -352,6 +502,19 @@ def cancel_shipment(*, user, shipment_id, cancellation_reason=""):
             notes=f"Envío cancelado por el cliente. Razón: {cancellation_reason or 'No especificada'}",
         )
 
+        # 4. SystemEvent → SHIPMENT_CANCELLED
+        event = SystemEvent.objects.create(
+            event_type=EventType.SHIPMENT_CANCELLED,
+            shipment=shipment,
+            client=shipment.client,
+            transporter=transporter,
+            payload={
+                "cancellation_reason": cancellation_reason or "No especificada",
+                "cancelled_by": "CLIENT",
+            },
+        )
+
+    _publish_after_commit(event)
     return shipment
 
 

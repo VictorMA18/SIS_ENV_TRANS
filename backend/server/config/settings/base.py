@@ -94,26 +94,18 @@ ASGI_APPLICATION = 'config.asgi.application'
 
 CHANNEL_LAYERS = {
     "default": {
-        "BACKEND": "channels.layers.InMemoryChannelLayer",
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [
+                (
+                    config("REDIS_HOST", default="127.0.0.1"),
+                    config("REDIS_PORT", default=6379, cast=int),
+                )
+            ],
+        },
     },
 }
 
-# TODO: CONFIGURACIÓN PARA PRODUCCIÓN (DOCKER/DEPLOY)
-# Reemplazar InMemoryChannelLayer por Redis para escalabilidad multi-proceso.
-#
-# CHANNEL_LAYERS = {
-#     "default": {
-#         "BACKEND": "channels_redis.core.RedisChannelLayer",
-#         "CONFIG": {
-#             "hosts": [
-#                 (
-#                     config("REDIS_HOST", default="127.0.0.1"),
-#                     config("REDIS_PORT", default=6379, cast=int),
-#                 )
-#             ],
-#         },
-#     },
-# }
 
 
 # Database
@@ -188,5 +180,50 @@ SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
     "AUTH_HEADER_TYPES": ("Bearer",),
+}
+
+# ---------------------------------------------------------------------------
+# RabbitMQ — Message Broker (AMQP)
+# ---------------------------------------------------------------------------
+
+RABBITMQ = {
+    "HOST": config("RABBITMQ_HOST", default="localhost"),
+    "PORT": config("RABBITMQ_PORT", default=5672, cast=int),
+    "USER": config("RABBITMQ_USER", default="guest"),
+    "PASS": config("RABBITMQ_PASS", default="guest"),
+    "EXCHANGE": "shipment_events",
+    "QUEUE": "notification_queue",
+}
+
+# ---------------------------------------------------------------------------
+# Logging Configuration
+# ---------------------------------------------------------------------------
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "simple": {
+            "format": "[{asctime}] {levelname} [{name}]: {message}",
+            "style": "{",
+            "datefmt": "%Y-%m-%d %H:%M:%S",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "simple",
+        },
+    },
+    "root": {
+        "handlers": ["console"],
+        "level": "INFO",
+    },
+    "loggers": {
+        "pika": {
+            "level": "WARNING",
+            "propagate": True,
+        },
+    },
 }
 

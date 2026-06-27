@@ -7,7 +7,7 @@ import { VitePWA } from "vite-plugin-pwa"
 function figmaAssetResolver() {
   return {
     name: 'figma-asset-resolver',
-    resolveId(id : any) {
+    resolveId(id: any) {
       if (id.startsWith('figma:asset/')) {
         const filename = id.replace('figma:asset/', '')
         return path.resolve(__dirname, 'src/assets', filename)
@@ -45,9 +45,23 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  // Proxy de desarrollo: redirige /api/ y /ws/ al servidor Django (puerto 8000)
+  server: {
+    proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+      },
+      '/ws': {
+        target: 'ws://127.0.0.1:8000',
+        ws: true,           // habilitar proxy WebSocket
+        changeOrigin: true,
+      },
+    },
+  },
   // File types to support raw imports. Never add .css, .tsx, or .ts files to this.
   assetsInclude: ['**/*.svg', '**/*.csv'],
   build: {
-    manifest: "manifest.json" 
+    manifest: "manifest.json"
   }
 })

@@ -26,6 +26,7 @@ export interface ClientNested {
   email: string;
   full_name: string;
   avatar_url: string | null;
+  average_rating: number | null;
 }
 
 export interface TransporterMini {
@@ -186,6 +187,54 @@ export interface TransporterShipmentSelection {
   status: SelectionStatus;
   responded_at: string | null;
   rejection_reason: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Metadata extensible de una notificación.
+ * Contrato V2: el backend GARANTIZA que `metadata` nunca es null — mínimo `{}`.
+ * La index signature permite campos futuros sin romper el contrato.
+ */
+export interface NotificationMetadata {
+  type?: string;
+  shipment_id?: string;
+  transporter_id?: string;
+  action_url?: string;
+  [key: string]: unknown;
+}
+
+/**
+ * Notificación del sistema.
+ * Contrato V2 §4: mismo formato en REST (`GET /api/notifications/`) y
+ * en el payload WebSocket (`{ type: "new_notification", notification: {...} }`).
+ */
+export interface AppNotification {
+  id: string;
+  title: string;
+  message: string;
+  status: 'PENDIENTE' | 'ENVIADO' | 'FALLIDO' | string;
+  metadata: NotificationMetadata;  // NUNCA null — el backend garantiza {}
+  is_read: boolean;
+  created_at: string;
+}
+
+// ─── Rating ─────────────────────────────────────────────────────────────────
+
+export interface RatingPayload {
+  shipment_id: string;
+  score: number;      // 1 – 5
+  comment?: string;
+}
+
+export interface Rating {
+  id: string;
+  shipment_id: string;
+  reviewer_role: 'CLIENT' | 'TRANSPORTER' | string;
+  score: number;
+  comment: string | null;
+  client_name: string;
+  transporter_name: string;
   created_at: string;
   updated_at: string;
 }

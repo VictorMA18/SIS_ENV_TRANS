@@ -1,9 +1,17 @@
 """
-Consumer WebSocket para transportistas disponibles.
+Consumers WebSocket para la app shipments.
 
-Reemplaza el endpoint GET /api/shipments/available-transporters/
-con una conexión en tiempo real que mantiene las mismas reglas de
-prioridad y filtrado de transportistas activos/disponibles.
+AvailableTransportersConsumer:
+    Transmite en tiempo real la lista de transportistas disponibles.
+    URL: ws/shipments/available-transporters/?token=<JWT>
+
+NotificationConsumer:
+    Consumer universal y simétrico de notificaciones en tiempo real.
+    Acepta conexiones de cualquier usuario autenticado (Cliente o Transportista).
+    URL: ws/notifications/?token=<JWT>
+    Cuando el worker de RabbitMQ crea una Notification en BD, despacha
+    el payload serializado al grupo 'user_<user_id>' y éste lo
+    reenvía al cliente WebSocket al instante.
 """
 
 import json
@@ -137,3 +145,96 @@ class AvailableTransportersConsumer(AsyncJsonWebsocketConsumer):
 
         serializer = TransporterProfileSerializer(qs, many=True)
         return serializer.data
+
+
+# ---------------------------------------------------------------------------
+# Consumer universal de notificaciones (Clientes + Transportistas)
+# ---------------------------------------------------------------------------
+
+
+class NotificationConsumer(AsyncJsonWebsocketConsumer):
+    """
+    WebSocket: ws/notifications/?token=<JWT>
+
+    Consumer unificado y simétrico para notificaciones en tiempo real.
+    Acepta conexiones de cualquier usuario autenticado (Cliente o Transportista)
+    y lo une a un grupo exclusivo basado en su ID de usuario.
+
+    Comportamiento:
+        - Al conectar: valida el token JWT del scope.
+          · Si es AnonymousUser → cierra la conexión (código 4001).
+          · Si es un usuario válido → se une al grupo 'user_<user_id>'.
+        - Al desconectar: abandona el grupo personal.
+        - Recibe mensajes del grupo (emitidos desde rabbitmq_consumer) y los
+          reenvía directamente al WebSocket del cliente.
+        - Acepta pings del cliente para keep-alive.
+
+    Payload enviado al cliente (desde el handler send_notification):
+        {
+            "type": "new_notification",
+            "notification": { ... }   ← datos serializados de la Notification
+        }
+    """
+
+    def _group_name(self):
+        """Nombre del grupo personal del usuario (universal)."""
+        return f"user_{self.scope['user'].id}"
+
+    async def connect(self):
+        """Acepta usuarios autenticados (cualquier rol) y los une a su grupo personal."""
+        user = self.scope.get("user", AnonymousUser())
+
+        if isinstance(user, AnonymousUser) or not user.is_authenticated:
+            await self.close(code=4001)
+            return
+
+        await self.channel_layer.group_add(
+            self._group_name(),
+            self.channel_name,
+        )
+        await self.accept()
+
+    async def disconnect(self, close_code):
+        """Abandona el grupo personal al desconectar."""
+        user = self.scope.get("user", AnonymousUser())
+        if not isinstance(user, AnonymousUser) and user.is_authenticated:
+            await self.channel_layer.group_discard(
+                self._group_name(),
+                self.channel_name,
+            )
+
+    async def receive_json(self, content, **kwargs):
+        """
+        El cliente puede enviar un ping para mantener la conexión viva.
+        { "type": "ping" }  →  { "type": "pong" }
+        """
+        if content.get("type") == "ping":
+            await self.send_json({"type": "pong"})
+
+    # ------------------------------------------------------------------
+    # Handler de Channels (llamado por channel_layer.group_send)
+    # ------------------------------------------------------------------
+
+    async def send_notification(self, event):
+        """
+        Recibe el payload de notificación procesado por el worker de RabbitMQ
+        y lo envía al WebSocket del usuario al instante.
+
+        Payload al cliente:
+            {
+                "type": "new_notification",
+                "notification": {
+                    "id": "<uuid>",
+                    "title": "...",
+                    "message": "...",
+                    "status": "ENVIADO",
+                    "metadata": { ... },
+                    "is_read": false,
+                    "created_at": "2026-..."
+                }
+            }
+        """
+        await self.send_json({
+            "type": "new_notification",
+            "notification": event["notification"],
+        })

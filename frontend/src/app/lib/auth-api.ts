@@ -68,7 +68,9 @@ const mapUser = (apiUser: ApiUser, profile?: ApiProfile, googleLinked = false): 
     document: mapDocument(profile),
     vehicleType: role === 'transporter' ? profile?.vehicle_description || undefined : undefined,
     completedShipments: profile?.completed_shipments ?? undefined,
-    rating: profile?.average_rating ?? undefined,
+    rating: (profile?.average_rating !== null && profile?.average_rating !== undefined)
+      ? Number(profile.average_rating)
+      : undefined,
   };
 };
 

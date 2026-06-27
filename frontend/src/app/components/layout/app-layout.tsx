@@ -1,10 +1,14 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router';
 import {
   LayoutDashboard, Package, Users, MapPin, User, Bell, LogOut,
   Menu, X, Truck, ChevronDown, Home, ChevronRight,
 } from 'lucide-react';
 import { useAuth } from '../../context/auth';
+import { useNotificationStore } from '../../stores/useNotificationStore';
+import { useNotifications } from '../../hooks/useNotifications';
+import { formatRelativeTime } from '../../lib/shipment-utils';
+import type { AppNotification } from '../../types/shipment';
 
 const clientNav = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/app/client/dashboard' },
@@ -21,12 +25,6 @@ const transporterNav = [
   { icon: User, label: 'Perfil', path: '/app/profile' },
 ];
 
-const NOTIFICATIONS = [
-  { id: 1, text: 'Tu envío ENV-2024-001 está en tránsito', time: '5 min', read: false },
-  { id: 2, text: 'Carlos Rodríguez aceptó tu envío', time: '1 hora', read: false },
-  { id: 3, text: 'Envío ENV-2024-003 entregado exitosamente', time: '3 horas', read: true },
-];
-
 export function AppLayout() {
   const { user, logout, isAuthenticated, isInitializing } = useAuth();
   const navigate = useNavigate();
@@ -34,14 +32,28 @@ export function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
 
-  if (isInitializing) {
+  // Hook unificado de notificaciones: REST (carga inicial) + WebSocket (push)
+  useNotifications({ enabled: isAuthenticated && !isInitializing });
+
+  const {
+    notifications,
+    unreadCount,
+    isConnected,
+    markAsRead,
+    markAllAsRead,
+    openRatingModal,
+  } = useNotificationStore();
+
+  useEffect(() => {
+    if (!isInitializing && !isAuthenticated) {
+      navigate('/auth');
+    }
+  }, [isAuthenticated, isInitializing, navigate]);
+
+  if (isInitializing || !isAuthenticated) {
     return null;
   }
 
-  if (!isAuthenticated) {
-    navigate('/auth');
-    return null;
-  }
 
   const navItems = user?.role === 'transporter' ? transporterNav : clientNav;
 
@@ -155,9 +167,19 @@ export function AppLayout() {
             {/* Notifications */}
             <div className="relative">
               <button onClick={() => setNotifOpen(o => !o)}
-                className="relative p-2.5 rounded-[8px] hover:bg-gray-100 transition-colors">
+                className="relative p-2.5 rounded-[8px] hover:bg-gray-100 transition-colors"
+                aria-label="Notificaciones">
                 <Bell className="w-5 h-5 text-gray-500" />
-                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-[#F97316] rounded-full border border-white" />
+                {unreadCount > 0 && (
+                  <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-[#F97316] rounded-full border border-white" />
+                )}
+                {/* Indicador de conexión WebSocket */}
+                <span
+                  className={`absolute bottom-1 right-1 w-1.5 h-1.5 rounded-full border border-white transition-colors ${
+                    isConnected ? 'bg-green-500' : 'bg-red-400'
+                  }`}
+                  title={isConnected ? 'Conectado en tiempo real' : 'Desconectado'}
+                />
               </button>
               {notifOpen && (
                 <>
@@ -166,25 +188,56 @@ export function AppLayout() {
                     <div className="p-4 border-b border-gray-100 flex items-center justify-between">
                       <h3 className="font-bold text-[#0F172A] text-sm">Notificaciones</h3>
                       <span className="text-xs bg-orange-100 text-[#F97316] px-2 py-0.5 rounded-full font-semibold">
-                        {NOTIFICATIONS.filter(n => !n.read).length} nuevas
+                        {unreadCount} nuevas
                       </span>
                     </div>
                     <div className="max-h-60 overflow-y-auto">
-                      {NOTIFICATIONS.map(n => (
-                        <div key={n.id} className={`p-4 border-b border-gray-50 hover:bg-gray-50/80 cursor-pointer transition-colors ${!n.read ? 'bg-orange-50/40' : ''}`}>
-                          <div className="flex items-start gap-3">
-                            <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${!n.read ? 'bg-[#F97316]' : 'bg-gray-300'}`} />
-                            <div>
-                              <p className="text-xs text-[#0F172A] leading-relaxed">{n.text}</p>
-                              <p className="text-[10px] text-gray-400 mt-1">Hace {n.time}</p>
-                            </div>
-                          </div>
+                      {notifications.length === 0 ? (
+                        <div className="p-6 text-center text-xs text-gray-400">
+                          No tienes notificaciones
                         </div>
-                      ))}
+                      ) : (
+                        notifications.map(n => (
+                          <button
+                            key={n.id}
+                            onClick={async () => {
+                              if (!n.is_read) {
+                                await markAsRead(n.id);
+                              }
+                              setNotifOpen(false);
+                              if (n.metadata?.type === 'RATING_REQUEST' && user?.role === 'client') {
+                                openRatingModal();
+                              } else if (n.metadata?.action_url) {
+                                navigate(n.metadata.action_url as string);
+                              }
+                            }}
+                            className={`w-full text-left p-4 border-b border-gray-50 hover:bg-gray-50/80 cursor-pointer transition-colors block ${!n.is_read ? 'bg-orange-50/40' : ''}`}
+                          >
+                            <div className="flex items-start gap-3">
+                              <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${!n.is_read ? 'bg-[#F97316]' : 'bg-gray-300'}`} />
+                              <div>
+                                <p className="text-xs font-bold text-[#0F172A]">{n.title}</p>
+                                <p className="text-xs text-gray-500 leading-relaxed mt-0.5">{n.message}</p>
+                                <p className="text-[10px] text-gray-400 mt-1">{formatRelativeTime(n.created_at)}</p>
+                              </div>
+                            </div>
+                          </button>
+                        ))
+                      )}
                     </div>
-                    <div className="p-3 text-center border-t border-gray-50">
-                      <button className="text-xs text-[#F97316] hover:underline font-medium">Ver todas</button>
-                    </div>
+                    {unreadCount > 0 && (
+                      <div className="p-3 text-center border-t border-gray-50">
+                        <button
+                          onClick={async () => {
+                            await markAllAsRead();
+                            setNotifOpen(false);
+                          }}
+                          className="text-xs text-[#F97316] hover:underline font-medium"
+                        >
+                          Marcar todas como leídas
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </>
               )}

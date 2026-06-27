@@ -6,6 +6,6 @@ from apps.notifications.models.notification import Notification
 @admin.register(Notification)
 class NotificationAdmin(admin.ModelAdmin):
   list_display = ("id", "event", "recipient_type", "recipient_id", 
-                  "channel", "title", "message", "status", "sent_at", "is_active", "created_at", "updated_at")   
-  list_filter = ("is_active",)
-  search_fields = ("id", "event", "recipient_type", "channel", "title", "message")
+                  "channel", "title", "status", "is_read", "is_active", "created_at")
+  list_filter = ("is_active", "is_read", "recipient_type", "status")
+  search_fields = ("id", "recipient_type", "channel", "title", "message")

@@ -17,13 +17,15 @@ const STEPS = ['Datos del envío', 'Seleccionar transportista', 'Confirmación']
 // ─── Sub-components ─────────────────────────────────────────────────────────
 
 function Stars({ rating }: { rating: number | null }) {
-  const value = rating ?? 0;
+  const value = rating !== null && rating !== undefined ? Number(rating) : null;
+  const displayValue = value !== null && !isNaN(value) ? value.toFixed(1) : '—';
+  const starsValue = value !== null && !isNaN(value) ? value : 0;
   return (
     <div className="flex items-center gap-0.5">
       {[1, 2, 3, 4, 5].map(i => (
-        <Star key={i} className={`w-3 h-3 ${i <= Math.floor(value) ? 'fill-amber-400 text-amber-400' : 'text-gray-200'}`} />
+        <Star key={i} className={`w-3 h-3 ${i <= Math.floor(starsValue) ? 'fill-amber-400 text-amber-400' : 'text-gray-200'}`} />
       ))}
-      <span className="text-xs text-gray-500 ml-1 font-medium">{value.toFixed(1)}</span>
+      <span className="text-xs text-gray-500 ml-1 font-medium">{displayValue}</span>
     </div>
   );
 }
@@ -151,7 +153,7 @@ export function NewShipment() {
         return;
       }
 
-      const backendUrl = import.meta.env.VITE_API_URL_BACKEND || '';
+      const backendUrl = (import.meta as unknown as { env: { VITE_API_URL_BACKEND?: string } }).env?.VITE_API_URL_BACKEND || '';
       const cleanBackendUrl = backendUrl.endsWith('/') ? backendUrl.slice(0, -1) : backendUrl;
       let wsUrl = '';
       if (cleanBackendUrl.startsWith('http')) {

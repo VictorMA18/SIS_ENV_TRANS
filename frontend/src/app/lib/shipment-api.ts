@@ -16,6 +16,9 @@ import type {
   ConfirmDeliveryPayload,
   TransporterShipmentSelection,
   SelectionStatus,
+  AppNotification,
+  Rating,
+  RatingPayload,
 } from '../types/shipment';
 
 const SHIPMENTS_BASE = '/api/shipments/';
@@ -132,3 +135,54 @@ export const confirmDelivery = (
     method: 'POST',
     body: payload,
   });
+
+// ─── Notifications ───────────────────────────────────────────────────────────
+
+/** Obtener notificaciones del cliente autenticado. */
+export const fetchNotifications = (): Promise<AppNotification[]> =>
+  apiRequest<AppNotification[]>('/api/notifications/');
+
+/** Marcar una notificación como leída. */
+export const markNotificationRead = (id: string): Promise<AppNotification> =>
+  apiRequest<AppNotification>(`/api/notifications/${id}/read/`, {
+    method: 'PATCH',
+    body: {},
+  });
+
+/** Marcar todas las notificaciones como leídas. */
+export const markAllNotificationsRead = (): Promise<{ detail: string }> =>
+  apiRequest<{ detail: string }>('/api/notifications/read-all/', {
+    method: 'PATCH',
+    body: {},
+  });
+
+/** Obtener el contador de notificaciones no leídas. */
+export const fetchUnreadCount = (): Promise<{ unread_count: number }> =>
+  apiRequest<{ unread_count: number }>('/api/notifications/unread-count/');
+
+
+// ─── Ratings ─────────────────────────────────────────────────────────────────
+
+/** Enviar calificación del cliente para un envío entregado. */
+export const submitRating = (payload: RatingPayload): Promise<Rating> =>
+  apiRequest<Rating>('/api/ratings/', {
+    method: 'POST',
+    body: payload,
+  });
+
+// ─── Client Profile ──────────────────────────────────────────────────────────
+
+export interface ClientProfile {
+  id: string;
+  email: string;
+  full_name: string;
+  phone?: string | null;
+  avatar_url?: string | null;
+  dni?: string | null;
+  address?: string | null;
+  average_rating: number | null;
+}
+
+export const fetchClientProfile = (id: string): Promise<ClientProfile> =>
+  apiRequest<ClientProfile>(`/api/clients/${id}/`);
+

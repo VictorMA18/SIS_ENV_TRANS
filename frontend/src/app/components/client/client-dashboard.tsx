@@ -1,13 +1,17 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import {
   Package, CheckCircle, Users, Star, Plus, TrendingUp, Eye, ArrowRight,
-  MoreHorizontal, Loader2, AlertCircle, Inbox,
+  MoreHorizontal, Loader2, AlertCircle, Inbox, Bell,
 } from 'lucide-react';
 import { useAuth } from '../../context/auth';
 import { useShipmentListStore } from '../../stores/useShipmentListStore';
+import { useNotificationStore } from '../../stores/useNotificationStore';
 import { getStatusConfig, formatShipmentDate, formatRelativeTime } from '../../lib/shipment-utils';
 import type { ShipmentStatus, Shipment } from '../../types/shipment';
+import { RatingModal } from './RatingModal';
+import { fetchClientProfile, type ClientProfile } from '../../lib/shipment-api';
+
 
 // ─── Sub-components ─────────────────────────────────────────────────────────
 
@@ -39,10 +43,26 @@ export function ClientDashboard() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { shipments, isLoading, error, fetchShipments, clearError } = useShipmentListStore();
+  const {
+    pendingRatingNotification,
+    fetchNotifications,
+    openRatingModal,
+  } = useNotificationStore();
+
+  const [profile, setProfile] = useState<ClientProfile | null>(null);
+
+
 
   useEffect(() => {
     fetchShipments();
-  }, [fetchShipments]);
+    fetchNotifications();
+
+    if (user?.id) {
+      fetchClientProfile(user.id)
+        .then(setProfile)
+        .catch((err: unknown) => console.error('Error loading client profile:', err));
+    }
+  }, [fetchShipments, fetchNotifications, user?.id]);
 
   const computed = useMemo(() => computeStats(shipments), [shipments]);
 
@@ -84,13 +104,54 @@ export function ClientDashboard() {
 
   return (
     <div className="p-5 lg:p-7">
+      {/* Rating modal — se renderiza sobre todo el contenido */}
+      <RatingModal />
+
+      {/* Banner de calificación pendiente */}
+      {pendingRatingNotification && (
+        <div
+          className="mb-5 flex items-center gap-3 p-4 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-[14px] shadow-sm"
+          style={{ animation: 'slideDownFade 0.4s ease' }}
+        >
+          <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
+            <Bell className="w-5 h-5 text-amber-500" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold text-[#0F172A] leading-tight">
+              {pendingRatingNotification.title}
+            </p>
+            <p className="text-xs text-gray-500 mt-0.5 truncate">
+              {pendingRatingNotification.message}
+            </p>
+          </div>
+          <button
+            onClick={openRatingModal}
+            className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 bg-[#F97316] text-white rounded-[8px] text-xs font-bold hover:bg-[#ea6b0e] transition-all shadow-md shadow-orange-200"
+          >
+            <Star className="w-3.5 h-3.5 fill-white" />
+            Calificar
+          </button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-start justify-between mb-7">
         <div>
           <h1 className="text-2xl font-extrabold text-[#0F172A] mb-0.5">
             Hola, {user?.name?.split(' ')[0]} 👋
           </h1>
-          <p className="text-gray-400 text-sm">Aquí está el resumen de tus envíos distritales</p>
+          <div className="flex flex-wrap items-center gap-2 mt-0.5">
+            <p className="text-gray-400 text-sm">Aquí está el resumen de tus envíos distritales</p>
+            {profile?.average_rating !== undefined && profile?.average_rating !== null && (
+              <>
+                <span className="text-gray-300 text-xs">•</span>
+                <span className="flex items-center gap-1 text-[11px] font-bold text-[#F59E0B] bg-amber-50 px-2 py-0.5 rounded-full border border-amber-100">
+                  <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+                  {Number(profile.average_rating).toFixed(2)} reputación cliente
+                </span>
+              </>
+            )}
+          </div>
         </div>
         <button
           onClick={() => navigate('/app/client/new-shipment')}

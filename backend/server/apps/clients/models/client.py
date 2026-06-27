@@ -1,3 +1,4 @@
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
 from apps.users.models.user import User
@@ -23,6 +24,12 @@ class Client(models.Model):
       verbose_name="DNI / Documento de Identidad"
   )
   address = models.TextField(blank=True, null=True)
+  average_rating = models.DecimalField(
+      max_digits=3,
+      decimal_places=2,
+      default=5.00,
+      validators=[MinValueValidator(0), MaxValueValidator(5)],
+  )
   is_active = models.BooleanField(default=True)
   created_at = models.DateTimeField(auto_now_add=True)
   updated_at = models.DateTimeField(auto_now=True)
@@ -30,6 +37,12 @@ class Client(models.Model):
   class Meta:
     db_table = 'clients'
     ordering = ['-created_at']
+    constraints = [
+        models.CheckConstraint(
+            condition=models.Q(average_rating__gte=0) & models.Q(average_rating__lte=5),
+            name='clients_average_rating_between_0_5',
+        ),
+    ]
 
   def __str__(self):
     return f'Client<{self.user.email}>'

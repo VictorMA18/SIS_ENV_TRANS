@@ -186,3 +186,21 @@ export interface ClientProfile {
 export const fetchClientProfile = (id: string): Promise<ClientProfile> =>
   apiRequest<ClientProfile>(`/api/clients/${id}/`);
 
+export const patchClientProfile = (
+  id: string,
+  payload: Partial<
+    Pick<
+      ClientProfile,
+      | 'full_name'
+      | 'phone'
+      | 'avatar_url'
+      | 'dni'
+      | 'address'
+    >
+  >,
+): Promise<ClientProfile> =>
+  apiRequest<ClientProfile>(`/api/clients/${id}/`, {
+    method: 'PATCH',
+    body: payload,
+  });
+

@@ -71,6 +71,10 @@ const mapUser = (apiUser: ApiUser, profile?: ApiProfile, googleLinked = false): 
     rating: (profile?.average_rating !== null && profile?.average_rating !== undefined)
       ? Number(profile.average_rating)
       : undefined,
+    dni: profile?.dni || undefined,
+    ruc: profile?.ruc || undefined,
+    licenseNumber: profile?.license_number || undefined,
+    address: profile?.address || undefined,
   };
 };
 

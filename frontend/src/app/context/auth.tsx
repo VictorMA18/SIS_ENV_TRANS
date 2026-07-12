@@ -17,6 +17,10 @@ export interface User {
   completedShipments?: number;
   phone?: string;
   document?: string;
+  dni?: string;
+  ruc?: string;
+  licenseNumber?: string;
+  address?: string;
 }
 
 interface AuthContextType {

@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
-import { User, Mail, Phone, Shield, Star, Package, Edit2, Check, X, Camera, Award, Truck } from 'lucide-react';
+import { User, Mail, Phone, Shield, Star, Package, Edit2, Check, X, Camera, Award, Truck, MapPin, Upload, Loader2 } from 'lucide-react';
 import { useAuth } from '../context/auth';
+import { patchTransporterProfile } from '../lib/transporter-api';
+import { patchClientProfile, fetchShipments, fetchTransporterSelections } from '../lib/shipment-api';
+import type { Shipment, TransporterShipmentSelection } from '../types/shipment';
 
 function GoogleIcon() {
   return (
@@ -14,6 +17,18 @@ function GoogleIcon() {
 }
 
 const VEHICLE_TYPES = ['Moto de carga', 'Mototaxi de carga', 'Camioneta', 'Van de carga', 'Camión pequeño', 'Camión mediano', 'Camión grande'];
+
+const PRESET_AVATARS = [
+  'https://api.dicebear.com/7.x/fun-emoji/svg?seed=Buster',
+  'https://api.dicebear.com/7.x/fun-emoji/svg?seed=Cookie',
+  'https://api.dicebear.com/7.x/fun-emoji/svg?seed=Toby',
+  'https://api.dicebear.com/7.x/fun-emoji/svg?seed=Simba',
+  'https://api.dicebear.com/7.x/fun-emoji/svg?seed=Oliver',
+  'https://api.dicebear.com/7.x/fun-emoji/svg?seed=Leo',
+  'https://api.dicebear.com/7.x/fun-emoji/svg?seed=Daisy',
+  'https://api.dicebear.com/7.x/fun-emoji/svg?seed=Bella',
+  'https://api.dicebear.com/7.x/fun-emoji/svg?seed=Milo',
+];
 
 const RATING_BREAKDOWN = [
   { stars: 5, count: 89, pct: 70 },
@@ -88,40 +103,332 @@ function InfoRow({
 export function ProfilePage() {
   const { user, updateUser } = useAuth();
   const [editing, setEditing] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [avatarError, setAvatarError] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [errorMsg, setErrorMsg] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
+  const [shipments, setShipments] = useState<Shipment[]>([]);
+  const [selections, setSelections] = useState<TransporterShipmentSelection[]>([]);
+  const [statsLoading, setStatsLoading] = useState(true);
+  const [showAvatarModal, setShowAvatarModal] = useState(false);
+  const [selectedAvatarUrl, setSelectedAvatarUrl] = useState('');
+
   const [form, setForm] = useState({
     name: user?.name || '',
     phone: user?.phone || '',
     vehicleType: user?.vehicleType || '',
+    dni: user?.dni || '',
+    address: user?.address || '',
+    ruc: user?.ruc || '',
+    licenseNumber: user?.licenseNumber || '',
   });
 
   useEffect(() => {
     setAvatarError(false);
   }, [user?.avatar]);
 
-  const save = () => {
-    updateUser(form);
-    setEditing(false);
+  useEffect(() => {
+    let active = true;
+    const loadStatsData = async () => {
+      if (!user) return;
+      try {
+        setStatsLoading(true);
+        if (user.role === 'client') {
+          const data = await fetchShipments();
+          if (active) setShipments(data);
+        } else if (user.role === 'transporter') {
+          const data = await fetchTransporterSelections();
+          if (active) setSelections(data);
+        }
+      } catch (err) {
+        console.error('Error loading stats for profile:', err);
+      } finally {
+        if (active) setStatsLoading(false);
+      }
+    };
+
+    loadStatsData();
+    return () => {
+      active = false;
+    };
+  }, [user]);
+
+  useEffect(() => {
+    if (user) {
+      setForm({
+        name: user.name || '',
+        phone: user.phone || '',
+        vehicleType: user.vehicleType || '',
+        dni: user.dni || '',
+        address: user.address || '',
+        ruc: user.ruc || '',
+        licenseNumber: user.licenseNumber || '',
+      });
+    }
+  }, [user]);
+
+  const save = async () => {
+    if (!user) return;
+    setLoading(true);
+    setErrors({});
+    setErrorMsg('');
+    setSuccessMsg('');
+    try {
+      if (user.role === 'transporter') {
+        const updated = await patchTransporterProfile(user.id, {
+          full_name: form.name,
+          phone: form.phone || null,
+          ruc: form.ruc || null,
+          license_number: form.licenseNumber || null,
+          vehicle_description: form.vehicleType || null,
+        });
+        updateUser({
+          name: updated.full_name,
+          phone: updated.phone || undefined,
+          ruc: updated.ruc || undefined,
+          licenseNumber: updated.license_number || undefined,
+          vehicleType: updated.vehicle_description || undefined,
+          document: updated.ruc ? `RUC: ${updated.ruc}` : undefined,
+        });
+      } else {
+        const updated = await patchClientProfile(user.id, {
+          full_name: form.name,
+          phone: form.phone || null,
+          dni: form.dni || null,
+          address: form.address || null,
+        });
+        updateUser({
+          name: updated.full_name,
+          phone: updated.phone || undefined,
+          dni: updated.dni || undefined,
+          address: updated.address || undefined,
+          document: updated.dni ? `DNI: ${updated.dni}` : undefined,
+        });
+      }
+      setSuccessMsg('Perfil actualizado correctamente.');
+      setEditing(false);
+    } catch (err: any) {
+      console.error(err);
+      if (err.data && typeof err.data === 'object') {
+        const fieldErrors: Record<string, string> = {};
+        for (const [key, val] of Object.entries(err.data)) {
+          let formKey = key;
+          if (key === 'full_name') formKey = 'name';
+          if (key === 'license_number') formKey = 'licenseNumber';
+          if (key === 'vehicle_description') formKey = 'vehicleType';
+
+          if (Array.isArray(val) && val.length > 0) {
+            fieldErrors[formKey] = val[0];
+          } else if (typeof val === 'string') {
+            fieldErrors[formKey] = val;
+          }
+        }
+        setErrors(fieldErrors);
+        setErrorMsg('Por favor corrige los errores del formulario.');
+      } else {
+        setErrorMsg(err.message || 'Ocurrió un error al actualizar el perfil.');
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
   const cancel = () => {
-    setForm({ name: user?.name || '', phone: user?.phone || '', vehicleType: user?.vehicleType || '' });
+    if (user) {
+      setForm({
+        name: user.name || '',
+        phone: user.phone || '',
+        vehicleType: user.vehicleType || '',
+        dni: user.dni || '',
+        address: user.address || '',
+        ruc: user.ruc || '',
+        licenseNumber: user.licenseNumber || '',
+      });
+    }
+    setErrors({});
+    setErrorMsg('');
+    setSuccessMsg('');
     setEditing(false);
   };
 
-  const clientStats = [
-    { label: 'Envíos realizados', value: '24' },
-    { label: 'Transportistas usados', value: '8' },
-    { label: 'Tiempo promedio', value: '2.5 hrs' },
-    { label: 'Total invertido', value: 'S/. 1,240' },
-  ];
+  const clientStats = (() => {
+    if (statsLoading) {
+      return [
+        { label: 'Envíos realizados', value: 'Cargando...' },
+        { label: 'Transportistas usados', value: 'Cargando...' },
+        { label: 'Tiempo promedio', value: 'Cargando...' },
+        { label: 'Total invertido', value: 'Cargando...' },
+      ];
+    }
 
-  const transporterStats = [
-    { label: 'Envíos completados', value: String(user?.completedShipments || 0) },
-    { label: 'Tasa de aceptación', value: '94%' },
-    { label: 'Tiempo promedio', value: '2.1 hrs' },
-    { label: 'Clientes recurrentes', value: '28' },
-  ];
+    const totalCount = shipments.length;
+
+    const uniqueTransporters = new Set(
+      shipments
+        .flatMap(s => s.selections || [])
+        .filter(sel => sel.status === 'ACEPTADO')
+        .map(sel => sel.transporter?.id)
+        .filter(Boolean)
+    );
+    const transportersUsedCount = uniqueTransporters.size;
+
+    const completed = shipments.filter(s => s.status === 'ENTREGADO');
+    let avgHours = 0;
+    if (completed.length > 0) {
+      const totalMs = completed.reduce((sum, s) => {
+        const deliveredEntry = s.tracking_entries?.find(t => t.status === 'ENTREGADO');
+        const startMs = new Date(s.created_at).getTime();
+        const endMs = deliveredEntry ? new Date(deliveredEntry.created_at).getTime() : new Date(s.updated_at).getTime();
+        return sum + (endMs - startMs);
+      }, 0);
+      avgHours = totalMs / completed.length / (1000 * 60 * 60);
+    }
+    const timeAverageStr = avgHours > 0 ? `${avgHours.toFixed(1)} hrs` : '0 hrs';
+
+    const totalSpent = shipments
+      .filter(s => s.status !== 'CANCELADO')
+      .reduce((sum, s) => sum + parseFloat(s.price || '0'), 0);
+    const totalSpentStr = `S/. ${totalSpent.toLocaleString('es-PE', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+
+    return [
+      { label: 'Envíos realizados', value: String(totalCount) },
+      { label: 'Transportistas usados', value: String(transportersUsedCount) },
+      { label: 'Tiempo promedio', value: timeAverageStr },
+      { label: 'Total invertido', value: totalSpentStr },
+    ];
+  })();
+
+  const transporterStats = (() => {
+    if (statsLoading) {
+      return [
+        { label: 'Envíos completados', value: 'Cargando...' },
+        { label: 'Tasa de aceptación', value: 'Cargando...' },
+        { label: 'Tiempo promedio', value: 'Cargando...' },
+        { label: 'Clientes recurrentes', value: 'Cargando...' },
+      ];
+    }
+
+    const completedSels = selections.filter(sel => sel.shipment?.status === 'ENTREGADO');
+    const completedCount = completedSels.length;
+
+    const acceptedCount = selections.filter(sel => sel.status === 'ACEPTADO').length;
+    const rejectedCount = selections.filter(sel => sel.status === 'RECHAZADO').length;
+    const totalResponded = acceptedCount + rejectedCount;
+    const acceptanceRate = totalResponded > 0 ? Math.round((acceptedCount / totalResponded) * 100) : 100;
+    const acceptanceRateStr = `${acceptanceRate}%`;
+
+    let avgHours = 0;
+    if (completedSels.length > 0) {
+      const totalMs = completedSels.reduce((sum, sel) => {
+        const s = sel.shipment;
+        const startEntry = s.tracking_entries?.find(t => t.status === 'EN_TRANSITO') || s.tracking_entries?.find(t => t.status === 'ACEPTADO');
+        const startMs = startEntry ? new Date(startEntry.created_at).getTime() : new Date(sel.created_at).getTime();
+        const deliveredEntry = s.tracking_entries?.find(t => t.status === 'ENTREGADO');
+        const endMs = deliveredEntry ? new Date(deliveredEntry.created_at).getTime() : new Date(s.updated_at).getTime();
+        return sum + (endMs - startMs);
+      }, 0);
+      avgHours = totalMs / completedSels.length / (1000 * 60 * 60);
+    }
+    const timeAverageStr = avgHours > 0 ? `${avgHours.toFixed(1)} hrs` : '0 hrs';
+
+    const clientCounts: Record<string, number> = {};
+    selections.forEach(sel => {
+      const clientId = sel.shipment?.client?.id;
+      if (clientId) {
+        clientCounts[clientId] = (clientCounts[clientId] || 0) + 1;
+      }
+    });
+    const recurrentClientsCount = Object.values(clientCounts).filter(count => count > 1).length;
+
+    return [
+      { label: 'Envíos completados', value: String(Math.max(user?.completedShipments || 0, completedCount)) },
+      { label: 'Tasa de aceptación', value: acceptanceRateStr },
+      { label: 'Tiempo promedio', value: timeAverageStr },
+      { label: 'Clientes recurrentes', value: String(recurrentClientsCount) },
+    ];
+  })();
+
+  const now = new Date();
+  const shipmentsThisMonthCount = shipments.filter(s => {
+    const d = new Date(s.created_at);
+    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+  }).length;
+
+  const completedCount = shipments.filter(s => s.status === 'ENTREGADO').length;
+  const inProgressCount = shipments.filter(s => s.status !== 'ENTREGADO' && s.status !== 'CANCELADO').length;
+
+  const ratingCount = Math.max(user?.completedShipments || 0, selections.filter(sel => sel.shipment?.status === 'ENTREGADO').length);
+  const ratingValue = user?.rating || 0;
+
+  const ratingBreakdown = (() => {
+    if (ratingCount === 0) {
+      return [
+        { stars: 5, count: 0, pct: 0 },
+        { stars: 4, count: 0, pct: 0 },
+        { stars: 3, count: 0, pct: 0 },
+        { stars: 2, count: 0, pct: 0 },
+        { stars: 1, count: 0, pct: 0 },
+      ];
+    }
+    const breakdown = [0, 0, 0, 0, 0];
+    let remainingRatings = ratingCount;
+    let targetSum = ratingValue * ratingCount;
+
+    for (let i = 4; i >= 0; i--) {
+      const star = i + 1;
+      if (i === 0) {
+        breakdown[i] = remainingRatings;
+      } else {
+        const maxForStar = Math.min(
+          remainingRatings,
+          Math.floor((targetSum - remainingRatings + 1) / star)
+        );
+        const allocated = Math.max(0, maxForStar);
+        breakdown[i] = allocated;
+        remainingRatings -= allocated;
+        targetSum -= allocated * star;
+      }
+    }
+
+    return [5, 4, 3, 2, 1].map(stars => {
+      const count = breakdown[stars - 1];
+      const pct = ratingCount > 0 ? Math.round((count / ratingCount) * 100) : 0;
+      return { stars, count, pct };
+    });
+  })();
+
+
+
+  const handleApplyAvatar = async () => {
+    if (!user) return;
+    setLoading(true);
+    setErrorMsg('');
+    try {
+      if (user.role === 'transporter') {
+        const updated = await patchTransporterProfile(user.id, {
+          avatar_url: selectedAvatarUrl || null,
+        });
+        updateUser({
+          avatar: updated.avatar_url || undefined,
+        });
+      } else {
+        const updated = await patchClientProfile(user.id, {
+          avatar_url: selectedAvatarUrl || null,
+        });
+        updateUser({
+          avatar: updated.avatar_url || undefined,
+        });
+      }
+      setSuccessMsg('Foto de perfil actualizada correctamente.');
+      setShowAvatarModal(false);
+    } catch (err: any) {
+      console.error(err);
+      setErrorMsg(err.message || 'Error al actualizar la foto de perfil en el servidor.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="p-5 lg:p-7 max-w-5xl mx-auto" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
@@ -154,7 +461,14 @@ export function ProfilePage() {
                       <span className="text-white text-2xl font-extrabold">{user?.name?.charAt(0)}</span>
                     )}
                   </div>
-                  <button className="absolute -bottom-1 -right-1 w-7 h-7 bg-[#F97316] rounded-full flex items-center justify-center border-2 border-white hover:bg-[#ea6b0e] transition-colors shadow-md">
+                  <button
+                    onClick={() => {
+                      setSelectedAvatarUrl(user?.avatar || '');
+                      setErrorMsg('');
+                      setShowAvatarModal(true);
+                    }}
+                    className="absolute -bottom-1 -right-1 w-7 h-7 bg-[#F97316] rounded-full flex items-center justify-center border-2 border-white hover:bg-[#ea6b0e] transition-colors shadow-md"
+                  >
                     <Camera className="w-3.5 h-3.5 text-white" />
                   </button>
                 </div>
@@ -188,30 +502,57 @@ export function ProfilePage() {
                 </button>
               ) : (
                 <div className="flex gap-2 flex-shrink-0">
-                  <button onClick={save}
-                    className="flex items-center gap-1.5 px-4 py-2.5 bg-[#F97316] text-white rounded-[10px] text-sm font-bold hover:bg-[#ea6b0e] transition-all hover:scale-[1.02] shadow-md shadow-orange-200">
-                    <Check className="w-4 h-4" /> Guardar
+                  <button onClick={save} disabled={loading}
+                    className="flex items-center gap-1.5 px-4 py-2.5 bg-[#F97316] text-white rounded-[10px] text-sm font-bold hover:bg-[#ea6b0e] transition-all hover:scale-[1.02] shadow-md shadow-orange-200 disabled:opacity-50 disabled:pointer-events-none">
+                    <Check className="w-4 h-4" /> {loading ? 'Guardando...' : 'Guardar'}
                   </button>
-                  <button onClick={cancel}
-                    className="flex items-center gap-1.5 px-4 py-2.5 border border-gray-200 rounded-[10px] text-sm font-semibold text-gray-500 hover:bg-gray-50 transition-all">
+                  <button onClick={cancel} disabled={loading}
+                    className="flex items-center gap-1.5 px-4 py-2.5 border border-gray-200 rounded-[10px] text-sm font-semibold text-gray-500 hover:bg-gray-50 transition-all disabled:opacity-50">
                     <X className="w-4 h-4" /> Cancelar
                   </button>
                 </div>
               )}
             </div>
 
+            {successMsg && (
+              <div className="mb-4 p-3 bg-green-50 border border-green-200 text-green-700 rounded-[10px] text-xs font-semibold flex items-center gap-2">
+                <Check className="w-4 h-4 text-green-500 flex-shrink-0" />
+                <span>{successMsg}</span>
+              </div>
+            )}
+
+            {errorMsg && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-[10px] text-xs font-semibold flex items-center gap-2">
+                <X className="w-4 h-4 text-red-500 flex-shrink-0" />
+                <span>{errorMsg}</span>
+              </div>
+            )}
+
             {/* Info fields */}
             <div className="space-y-3">
               <InfoRow icon={User} label="Nombre completo" value={user?.name || ''} editing={editing}
-                editValue={form.name} onEditChange={v => setForm(f => ({ ...f, name: v }))} />
+                editValue={form.name} onEditChange={v => setForm(f => ({ ...f, name: v }))} error={errors.name} />
               <InfoRow icon={Mail} label="Correo electrónico" value={user?.email || ''} nonEditable />
               <InfoRow icon={Phone} label="Teléfono" value={user?.phone || ''} editing={editing}
-                editValue={form.phone} onEditChange={v => setForm(f => ({ ...f, phone: v }))} />
-              <InfoRow icon={Shield} label="Documento de identidad" value={user?.document || ''} nonEditable />
+                editValue={form.phone} onEditChange={v => setForm(f => ({ ...f, phone: v }))} error={errors.phone} />
+              {user?.role === 'client' && (
+                <>
+                  <InfoRow icon={Shield} label="DNI" value={user?.dni || ''} editing={editing}
+                    editValue={form.dni} onEditChange={v => setForm(f => ({ ...f, dni: v }))} error={errors.dni} />
+                  <InfoRow icon={MapPin} label="Dirección" value={user?.address || ''} editing={editing}
+                    editValue={form.address} onEditChange={v => setForm(f => ({ ...f, address: v }))} error={errors.address} />
+                </>
+              )}
               {user?.role === 'transporter' && (
-                <InfoRow icon={Truck} label="Vehículo / Tipo de transporte" value={user?.vehicleType || ''}
-                  editing={editing} editValue={form.vehicleType}
-                  onEditChange={v => setForm(f => ({ ...f, vehicleType: v }))} select={VEHICLE_TYPES} />
+                <>
+                  <InfoRow icon={Shield} label="RUC" value={user?.ruc || ''} editing={editing}
+                    editValue={form.ruc} onEditChange={v => setForm(f => ({ ...f, ruc: v }))} error={errors.ruc} />
+                  <InfoRow icon={Award} label="Brevete / Licencia" value={user?.licenseNumber || ''} editing={editing}
+                    editValue={form.licenseNumber} onEditChange={v => setForm(f => ({ ...f, licenseNumber: v }))} error={errors.licenseNumber} />
+                  <InfoRow icon={Truck} label="Vehículo / Tipo de transporte" value={user?.vehicleType || ''}
+                    editing={editing} editValue={form.vehicleType}
+                    onEditChange={v => setForm(f => ({ ...f, vehicleType: v }))} select={VEHICLE_TYPES} error={errors.vehicleType} />
+                </>
               )}
             </div>
           </div>
@@ -279,7 +620,7 @@ export function ProfilePage() {
                 <p className="text-xs text-gray-400 mt-1.5">{user.completedShipments} evaluaciones en total</p>
               </div>
               <div className="space-y-2">
-                {RATING_BREAKDOWN.map(r => (
+                {ratingBreakdown.map(r => (
                   <div key={r.stars} className="flex items-center gap-2">
                     <span className="text-xs text-gray-500 w-3 text-right">{r.stars}</span>
                     <Star className="w-3 h-3 fill-amber-400 text-amber-400 flex-shrink-0" />
@@ -315,13 +656,13 @@ export function ProfilePage() {
             <div className="bg-gradient-to-br from-[#0F172A] to-[#1E293B] rounded-[16px] p-5 text-white">
               <Package className="w-7 h-7 text-[#F97316] mb-3" />
               <h3 className="font-bold text-sm mb-1">Historial de envíos</h3>
-              <p className="text-3xl font-extrabold mb-0.5">24</p>
-              <p className="text-slate-400 text-xs mb-4">Envíos realizados desde mayo 2025</p>
+              <p className="text-3xl font-extrabold mb-0.5">{statsLoading ? '...' : shipments.length}</p>
+              <p className="text-slate-400 text-xs mb-4">Envíos registrados en total</p>
               <div className="space-y-2">
                 {[
-                  { label: 'Este mes', value: '8' },
-                  { label: 'Completados', value: '22' },
-                  { label: 'En proceso', value: '2' },
+                  { label: 'Este mes', value: statsLoading ? '...' : String(shipmentsThisMonthCount) },
+                  { label: 'Completados', value: statsLoading ? '...' : String(completedCount) },
+                  { label: 'En proceso', value: statsLoading ? '...' : String(inProgressCount) },
                 ].map(item => (
                   <div key={item.label} className="flex justify-between text-xs">
                     <span className="text-slate-400">{item.label}</span>
@@ -333,6 +674,85 @@ export function ProfilePage() {
           )}
         </div>
       </div>
+      {/* Avatar Selection Modal */}
+      {showAvatarModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-[24px] shadow-[0_20px_50px_rgba(0,0,0,0.15)] border border-gray-100 w-full max-w-md overflow-hidden flex flex-col max-h-[90vh]">
+            {/* Header */}
+            <div className="flex items-center justify-between p-6 border-b border-gray-100">
+              <div>
+                <h3 className="text-lg font-extrabold text-[#0F172A]">Cambiar Foto de Perfil</h3>
+                <p className="text-xs text-gray-400 mt-0.5">Elige una de nuestras ilustraciones predeterminadas</p>
+              </div>
+              <button
+                onClick={() => setShowAvatarModal(false)}
+                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-full transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              {/* Preview */}
+              <div className="flex flex-col items-center justify-center">
+                <div className="w-24 h-24 rounded-full bg-gradient-to-br from-[#0F172A] to-[#334155] flex items-center justify-center overflow-hidden border-4 border-orange-100 shadow-md">
+                  {selectedAvatarUrl ? (
+                    <img src={selectedAvatarUrl} alt="Preview" className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-white text-3xl font-extrabold">{user?.name?.charAt(0)}</span>
+                  )}
+                </div>
+                <p className="text-xs text-gray-400 mt-2 font-semibold">Vista previa de tu perfil</p>
+              </div>
+
+              {/* Presets section */}
+              <div>
+                <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2.5">Ilustraciones predeterminadas</h4>
+                <div className="grid grid-cols-3 gap-3">
+                  {PRESET_AVATARS.map((url, idx) => {
+                    const isSelected = selectedAvatarUrl === url;
+                    return (
+                      <button
+                        key={idx}
+                        onClick={() => setSelectedAvatarUrl(url)}
+                        className={`relative aspect-square rounded-[12px] overflow-hidden border-2 transition-all hover:scale-105 ${isSelected ? 'border-[#F97316] shadow-md shadow-orange-100 ring-2 ring-orange-500/20' : 'border-gray-150 hover:border-gray-300'}`}
+                      >
+                        <img src={url} alt={`Avatar predeterminado ${idx + 1}`} className="w-full h-full object-cover" />
+                        {isSelected && (
+                          <div className="absolute inset-0 bg-[#F97316]/10 flex items-center justify-center">
+                            <div className="w-5 h-5 bg-[#F97316] rounded-full flex items-center justify-center border-2 border-white shadow">
+                              <Check className="w-3 h-3 text-white" />
+                            </div>
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-6 bg-gray-50/80 border-t border-gray-100 flex gap-3 justify-end rounded-b-[24px]">
+              <button
+                onClick={() => setShowAvatarModal(false)}
+                disabled={loading}
+                className="px-4 py-2 border border-gray-200 rounded-[10px] text-sm font-semibold text-gray-500 hover:bg-white transition-all disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleApplyAvatar}
+                disabled={loading || !selectedAvatarUrl}
+                className="px-5 py-2 bg-[#F97316] text-white rounded-[10px] text-sm font-bold hover:bg-[#ea6b0e] transition-all hover:scale-[1.02] shadow-md shadow-orange-200 disabled:opacity-50 disabled:pointer-events-none"
+              >
+                {loading ? 'Guardando...' : 'Aplicar cambios'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

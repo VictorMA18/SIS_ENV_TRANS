@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router';
 import {
   LayoutDashboard, Package, Users, MapPin, User, Bell, LogOut,
-  Menu, X, Truck, ChevronDown, Home, ChevronRight,
+  Menu, X, Truck, ChevronDown, Home, ChevronRight, Clock,
 } from 'lucide-react';
 import { useAuth } from '../../context/auth';
 import { useNotificationStore } from '../../stores/useNotificationStore';
@@ -11,18 +11,19 @@ import { formatRelativeTime } from '../../lib/shipment-utils';
 import type { AppNotification } from '../../types/shipment';
 
 const clientNav = [
-  { icon: LayoutDashboard, label: 'Dashboard', path: '/app/client/dashboard' },
-  { icon: Package, label: 'Mis Envíos', path: '/app/client/dashboard' },
-  { icon: Users, label: 'Transportistas', path: '/app/client/dashboard' },
-  { icon: MapPin, label: 'Seguimiento', path: '/app/client/tracking/ENV-2024-001' },
-  { icon: User, label: 'Perfil', path: '/app/profile' },
+  { icon: LayoutDashboard, label: 'Dashboard',     path: '/app/client/dashboard' },
+  { icon: Package,         label: 'Mis Envíos',    path: '/app/client/shipments' },
+  { icon: Users,           label: 'Transportistas', path: '/app/client/transporters' },
+  { icon: MapPin,          label: 'Seguimiento',   path: '/app/client/tracking' },
+  { icon: User,            label: 'Mi Perfil',     path: '/app/client/profile' },
 ];
 
 const transporterNav = [
-  { icon: LayoutDashboard, label: 'Dashboard', path: '/app/transporter/dashboard' },
-  { icon: Package, label: 'Mis Envíos', path: '/app/transporter/dashboard' },
-  { icon: MapPin, label: 'Seguimiento', path: '/app/client/tracking/ENV-2024-001' },
-  { icon: User, label: 'Perfil', path: '/app/profile' },
+  { icon: LayoutDashboard, label: 'Dashboard',     path: '/app/transporter/dashboard' },
+  { icon: Package,         label: 'Solicitudes',   path: '/app/transporter/requests' },
+  { icon: Truck,           label: 'Rutas Activas', path: '/app/transporter/active-routes' },
+  { icon: Clock,           label: 'Historial',     path: '/app/transporter/history' },
+  { icon: User,            label: 'Mi Perfil',     path: '/app/transporter/profile' },
 ];
 
 export function AppLayout() {
@@ -59,13 +60,31 @@ export function AppLayout() {
 
   const handleLogout = () => { logout(); navigate('/'); };
 
-  const isActive = (path: string) => location.pathname === path;
+  // Longest-prefix match: solo 1 ítem activo a la vez
+  const isActive = (path: string) => {
+    const p = location.pathname;
+    if (p === path) return true;
+    if (p.startsWith(path + '/')) {
+      // Verificar que no exista otro item con match más específico
+      return !navItems.some(
+        item => item.path !== path &&
+                item.path.length > path.length &&
+                (p === item.path || p.startsWith(item.path + '/'))
+      );
+    }
+    return false;
+  };
 
   const pageTitle = (() => {
     const p = location.pathname;
     if (p.includes('new-shipment')) return 'Nuevo Envío';
     if (p.includes('tracking')) return 'Seguimiento de Envío';
     if (p.includes('profile')) return 'Mi Perfil';
+    if (p.includes('shipments')) return 'Mis Envíos';
+    if (p.includes('transporters')) return 'Transportistas';
+    if (p.includes('requests')) return 'Solicitudes Entrantes';
+    if (p.includes('active-routes')) return 'Rutas Activas';
+    if (p.includes('history')) return 'Historial de Entregas';
     if (p.includes('dashboard')) return 'Dashboard';
     return 'CargoDistrict';
   })();
@@ -74,6 +93,11 @@ export function AppLayout() {
     const p = location.pathname;
     if (p.includes('new-shipment')) return ['Envíos', 'Nuevo Envío'];
     if (p.includes('tracking')) return ['Envíos', 'Seguimiento'];
+    if (p.includes('shipments')) return ['Envíos'];
+    if (p.includes('transporters')) return ['Transportistas'];
+    if (p.includes('requests')) return ['Solicitudes'];
+    if (p.includes('active-routes')) return ['Rutas Activas'];
+    if (p.includes('history')) return ['Historial'];
     if (p.includes('profile')) return ['Perfil'];
     return [];
   })();

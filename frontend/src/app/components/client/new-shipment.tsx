@@ -482,10 +482,8 @@ export function NewShipment() {
               <Field label="Volumen (m³)" icon={Box} type="number" value={form.volume_m3} onChange={v => upd('volume_m3', v)} error={errors.volume_m3} placeholder="Ej: 0.5" />
               
               <Field label="Precio del envío (S/.)" icon={Coins} type="number" value={form.price} onChange={v => upd('price', v)} error={errors.price} placeholder="Ej: 85.50" />
-              <div className="grid grid-cols-2 gap-2">
-                <Field label="Fecha de entrega" icon={Calendar} type="date" value={form.delivery_date} onChange={v => upd('delivery_date', v)} error={errors.delivery_date} />
-                <Field label="Hora de entrega" icon={Clock} type="time" value={form.delivery_time} onChange={v => upd('delivery_time', v)} error={errors.delivery_time} />
-              </div>
+              <Field label="Fecha de entrega" icon={Calendar} type="date" value={form.delivery_date} onChange={v => upd('delivery_date', v)} error={errors.delivery_date} />
+              <Field label="Hora de entrega" icon={Clock} type="time" value={form.delivery_time} onChange={v => upd('delivery_time', v)} error={errors.delivery_time} />
 
               <div className="sm:col-span-2">
                 <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Notas adicionales</label>

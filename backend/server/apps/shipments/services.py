@@ -398,6 +398,11 @@ def confirm_delivery(*, user, selection_id, location_data=None, notes=""):
         shipment.status = ShipmentStatus.DELIVERED
         shipment.save(update_fields=["status", "updated_at"])
 
+        # Increment completed shipments count on the transporter profile
+        transporter = selection.transporter
+        transporter.completed_shipments += 1
+        transporter.save(update_fields=["completed_shipments"])
+
         # 2. Registrar hito final de tracking con GPS
         ShipmentTracking.objects.create(
             shipment=shipment,

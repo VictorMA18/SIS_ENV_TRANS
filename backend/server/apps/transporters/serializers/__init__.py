@@ -4,7 +4,7 @@ from typing import Optional
 from django.db import IntegrityError, transaction
 from rest_framework import serializers
 
-from apps.transporters.models import Transporter
+from apps.transporters.models import Transporter, TransporterZone
 from apps.users.models import User
 from apps.users.serializers import UserSerializer, validate_password_value
 from common.enums.user import UserRole
@@ -16,6 +16,8 @@ LICENSE_REGEX = re.compile(r"^[A-Za-z]\d{9}$")
 
 class TransporterProfileSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
+    completed_shipments = serializers.SerializerMethodField()
+
     class Meta:
         model = Transporter
         fields = (
@@ -31,6 +33,9 @@ class TransporterProfileSerializer(serializers.ModelSerializer):
             "updated_at",
         )
         read_only_fields = fields
+
+    def get_completed_shipments(self, obj) -> int:
+        return obj.selections.filter(status="ACEPTADO", shipment__status="ENTREGADO").count()
 
 
 class TransporterSerializer(serializers.ModelSerializer):
@@ -50,6 +55,7 @@ class TransporterSerializer(serializers.ModelSerializer):
         allow_blank=True,
         allow_null=True,
     )
+    completed_shipments = serializers.SerializerMethodField()
 
     class Meta:
         model = Transporter
@@ -78,6 +84,9 @@ class TransporterSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         )
+
+    def get_completed_shipments(self, obj) -> int:
+        return obj.selections.filter(status="ACEPTADO", shipment__status="ENTREGADO").count()
 
     def validate_phone(self, value: Optional[str]) -> Optional[str]:
         if value in (None, ""):
@@ -250,3 +259,56 @@ class TransporterRegisterSerializer(serializers.Serializer):
             raise serializers.ValidationError(
                 "No se pudo crear el transportista. Verifica email, RUC o brevete."
             ) from exc
+
+
+class TransporterZoneSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TransporterZone
+        fields = (
+            "id",
+            "transporter",
+            "district",
+            "is_active",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = (
+            "id",
+            "transporter",
+            "created_at",
+            "updated_at",
+        )
+
+    def validate_district(self, value: str) -> str:
+        value = value.strip()
+
+        if not value:
+            raise serializers.ValidationError(
+                "El distrito no puede estar vacío."
+            )
+
+        return value.title()
+
+    def validate(self, attrs):
+        transporter = attrs.get("transporter") or (
+            self.instance.transporter if self.instance else None
+        )
+        district = attrs.get("district") or (
+            self.instance.district if self.instance else None
+        )
+        if transporter and district:
+            qs = TransporterZone.objects.filter(
+                transporter=transporter,
+                district=district
+            )
+            if self.instance:
+                qs = qs.exclude(pk=self.instance.pk)
+
+            if qs.exists():
+                raise serializers.ValidationError(
+                    {
+                        "district": "Ya tienes registrada una zona con este distrito."
+                    }
+                )
+
+        return attrs

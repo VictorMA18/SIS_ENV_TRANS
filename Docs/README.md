@@ -347,7 +347,7 @@ python manage.py runserver
 cd backend/server
 source venv/bin/activate
 
-python manage.py consume_notifications
+python manage.py rabbitmq_consumer
 ```
 
 > Este comando inicia el consumer que escucha eventos de RabbitMQ y genera notificaciones.
@@ -356,7 +356,7 @@ python manage.py consume_notifications
 
 ```bash
 cd frontend
-pnpm dev
+pnpm run dev
 ```
 
 El frontend estará disponible en: **http://localhost:5173**

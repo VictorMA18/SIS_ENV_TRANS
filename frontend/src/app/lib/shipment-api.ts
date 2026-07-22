@@ -186,3 +186,51 @@ export interface ClientProfile {
 export const fetchClientProfile = (id: string): Promise<ClientProfile> =>
   apiRequest<ClientProfile>(`/api/clients/${id}/`);
 
+// ─── Available Transporters (Public for Clients) ─────────────────────────────
+
+/** Interfaz para transportista disponible del endpoint /api/transporters/available/ */
+export interface AvailableTransporterProfile {
+  user: {
+    id: string;
+    email: string;
+    full_name: string;
+    avatar_url: string | null;
+  };
+  license_number: string | null;
+  ruc: string | null;
+  vehicle_description: string | null;
+  is_available: boolean;
+  is_active: boolean;
+  completed_shipments: number;
+  average_rating: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Obtener la lista de transportistas activos y disponibles (para clientes). */
+export const fetchAvailableTransporters = (): Promise<AvailableTransporterProfile[]> =>
+  apiRequest<AvailableTransporterProfile[]>('/api/transporters/available/');
+
+// ─── Ratings (List emitted) ──────────────────────────────────────────────────
+
+/** Obtener las calificaciones emitidas por el usuario autenticado. */
+export const fetchRatings = (): Promise<Rating[]> =>
+  apiRequest<Rating[]>('/api/ratings/');
+
+export const patchClientProfile = (
+  id: string,
+  payload: Partial<
+    Pick<
+      ClientProfile,
+      | 'full_name'
+      | 'phone'
+      | 'avatar_url'
+      | 'dni'
+      | 'address'
+    >
+  >,
+): Promise<ClientProfile> =>
+  apiRequest<ClientProfile>(`/api/clients/${id}/`, {
+    method: 'PATCH',
+    body: payload,
+  });

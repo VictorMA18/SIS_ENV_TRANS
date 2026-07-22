@@ -39,3 +39,35 @@ export const patchTransporterProfile = (
     method: 'PATCH',
     body: payload,
   });
+
+export interface TransporterZone {
+  id: string;
+  transporter: string;
+  district: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+const ZONES_BASE = '/api/transporter-zones/';
+
+export const fetchTransporterZones = (): Promise<TransporterZone[]> =>
+  apiRequest<TransporterZone[]>(ZONES_BASE);
+
+export const createTransporterZone = (district: string): Promise<TransporterZone> =>
+  apiRequest<TransporterZone>(ZONES_BASE, {
+    method: 'POST',
+    body: { district },
+  });
+
+export const updateTransporterZone = (
+  id: string,
+  payload: Partial<Pick<TransporterZone, 'district' | 'is_active'>>,
+): Promise<TransporterZone> =>
+  apiRequest<TransporterZone>(`${ZONES_BASE}${id}/`, {
+    method: 'PATCH',
+    body: payload,
+  });
+
+export const deleteTransporterZone = (id: string): Promise<void> =>
+  apiRequest<void>(`${ZONES_BASE}${id}/`, { method: 'DELETE' });

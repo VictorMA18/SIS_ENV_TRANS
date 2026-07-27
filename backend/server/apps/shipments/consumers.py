@@ -19,7 +19,7 @@ import json
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from django.contrib.auth.models import AnonymousUser
-from django.db.models import Case, IntegerField, Value, When
+from django.db.models import Case, Exists, IntegerField, OuterRef, Value, When
 
 from apps.transporters.models.transporter import Transporter
 from apps.transporters.serializers import TransporterProfileSerializer
@@ -133,13 +133,24 @@ class AvailableTransportersConsumer(AsyncJsonWebsocketConsumer):
         districts = [d for d in (origin_district, destination_district) if d]
 
         if districts:
+            # Use Exists subquery instead of a JOIN to avoid duplicate rows
+            # when a transporter has zones matching multiple districts.
+            from apps.transporters.models.transporter_zone import TransporterZone
+            zone_match = Exists(
+                TransporterZone.objects.filter(
+                    transporter=OuterRef("pk"),
+                    district__in=districts,
+                    is_active=True,
+                )
+            )
             qs = qs.annotate(
+                has_zone_match=zone_match,
                 priority=Case(
-                    When(zones__district__in=districts, then=Value(0)),
+                    When(has_zone_match=True, then=Value(0)),
                     default=Value(1),
                     output_field=IntegerField(),
                 ),
-            ).distinct().order_by("priority", "-average_rating")
+            ).order_by("priority", "-average_rating")
         else:
             qs = qs.order_by("-average_rating")
 

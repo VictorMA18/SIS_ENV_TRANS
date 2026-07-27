@@ -221,7 +221,29 @@ export function AppLayout() {
                           No tienes notificaciones
                         </div>
                       ) : (
-                        notifications.map(n => (
+                        notifications.map(n => {
+                          // Resolve notification URL to actual frontend route
+                          const resolveNotificationUrl = (): string | null => {
+                            const shipmentId = n.metadata?.shipment_id;
+                            const type = n.metadata?.type;
+
+                            if (user?.role === 'client') {
+                              if (type === 'RATING_REQUEST') return null; // handled by modal
+                              if (shipmentId) return `/app/client/tracking/${shipmentId}`;
+                            } else if (user?.role === 'transporter') {
+                              if (type === 'SHIPMENT_CREATED' || type === 'TRANSPORTER_SELECTED') {
+                                return '/app/transporter/requests';
+                              }
+                              if (type === 'DELIVERY_CONFIRMED') {
+                                return '/app/transporter/history';
+                              }
+                              // EN_TRANSITO, SHIPMENT_CANCELLED, etc.
+                              return '/app/transporter/active-routes';
+                            }
+                            return null;
+                          };
+
+                          return (
                           <button
                             key={n.id}
                             onClick={async () => {
@@ -231,8 +253,11 @@ export function AppLayout() {
                               setNotifOpen(false);
                               if (n.metadata?.type === 'RATING_REQUEST' && user?.role === 'client') {
                                 openRatingModal();
-                              } else if (n.metadata?.action_url) {
-                                navigate(n.metadata.action_url as string);
+                              } else {
+                                const targetUrl = resolveNotificationUrl();
+                                if (targetUrl) {
+                                  navigate(targetUrl);
+                                }
                               }
                             }}
                             className={`w-full text-left p-4 border-b border-gray-50 hover:bg-gray-50/80 cursor-pointer transition-colors block ${!n.is_read ? 'bg-orange-50/40' : ''}`}
@@ -246,7 +271,8 @@ export function AppLayout() {
                               </div>
                             </div>
                           </button>
-                        ))
+                          );
+                        })
                       )}
                     </div>
                     {unreadCount > 0 && (

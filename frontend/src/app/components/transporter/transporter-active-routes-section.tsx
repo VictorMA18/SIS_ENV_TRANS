@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   CheckCircle, Truck, ChevronDown, Loader2, AlertTriangle,
-  X, FileText, MapPin, Package,
+  X, FileText, MapPin, Package, Image,
 } from 'lucide-react';
 import { useAuth } from '../../context/auth';
 import { useShipmentListStore } from '../../stores/useShipmentListStore';
@@ -362,6 +362,21 @@ export function TransporterActiveRoutesSection() {
                   </div>
                 </div>
               </div>
+              {/* Imágenes de la Carga */}
+              {selectedSelection.shipment.url_images && selectedSelection.shipment.url_images.length > 0 && (
+                <div className="bg-gray-50 rounded-[12px] p-4 border border-gray-100">
+                  <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                    <Image className="w-3.5 h-3.5 text-[#F97316]" /> Imágenes de la Carga
+                  </h4>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedSelection.shipment.url_images.map((url, idx) => (
+                      <a key={url} href={url} target="_blank" rel="noreferrer" className="w-24 h-16 rounded-[8px] overflow-hidden border border-gray-200 hover:scale-[1.03] transition-all bg-white flex-shrink-0">
+                        <img src={url} alt={`Imagen ${idx + 1}`} className="w-full h-full object-cover" />
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
             <div className="mt-5 pt-3 border-t border-gray-100 flex justify-end">
               <button onClick={() => setSelectedSelection(null)} className="px-5 py-2 bg-[#F97316] text-white rounded-[10px] text-xs font-bold hover:bg-[#ea6b0e] transition-all">

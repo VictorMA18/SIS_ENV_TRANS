@@ -352,6 +352,8 @@ export function NewShipment() {
       if (form.volume_m3) data.volume_m3 = Number(form.volume_m3);
       if (form.notes.trim()) data.notes = form.notes.trim();
       setStep1Data(data);
+    } else if (currentStep === 2 && selectedTransporterId) {
+      goToStep(3);
     }
   };
 

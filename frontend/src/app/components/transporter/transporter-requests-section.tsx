@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
+import { formatShipmentDate } from '../../lib/shipment-utils';
 import {
   Package, Check, X, Loader2, AlertTriangle, ArrowRight,
-  Coins, Sparkles, FileText, Camera, MapPin, Clock, Calendar,
+  Coins, Sparkles, FileText, Camera, MapPin, Clock, Calendar, Image,
 } from 'lucide-react';
 import { useAuth } from '../../context/auth';
 import { useShipmentListStore } from '../../stores/useShipmentListStore';
-import { formatShipmentDate } from '../../lib/shipment-utils';
 import type { TransporterShipmentSelection } from '../../types/shipment';
 
 // ─── Main Component ─────────────────────────────────────────────────────────
@@ -273,6 +273,45 @@ export function TransporterRequestsSection() {
                   {selectedSelection.shipment.destination_address}
                 </p>
               </div>
+              {/* Detalles de Carga */}
+              <div className="bg-gray-50 rounded-[12px] p-4 border border-gray-100">
+                <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                  <Package className="w-3.5 h-3.5 text-[#F97316]" /> Detalles de Carga
+                </h4>
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <span className="text-gray-400 block">Descripción</span>
+                    <span className="font-bold text-[#0F172A]">{selectedSelection.shipment.description || '—'}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-400 block">Precio</span>
+                    <span className="font-bold text-[#0F172A]">S/. {Number(selectedSelection.shipment.price).toFixed(2)}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-400 block">Peso</span>
+                    <span className="font-bold text-[#0F172A]">{selectedSelection.shipment.weight_kg ? `${selectedSelection.shipment.weight_kg} kg` : '—'}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-400 block">Programado</span>
+                    <span className="font-bold text-[#0F172A]">{formatShipmentDate(selectedSelection.shipment.scheduled_delivery_at)}</span>
+                  </div>
+                </div>
+              </div>
+              {/* Imágenes de la Carga */}
+              {selectedSelection.shipment.url_images && selectedSelection.shipment.url_images.length > 0 && (
+                <div className="bg-gray-50 rounded-[12px] p-4 border border-gray-100">
+                  <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                    <Image className="w-3.5 h-3.5 text-[#F97316]" /> Imágenes de la Carga
+                  </h4>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedSelection.shipment.url_images.map((url, idx) => (
+                      <a key={url} href={url} target="_blank" rel="noreferrer" className="w-24 h-16 rounded-[8px] overflow-hidden border border-gray-200 hover:scale-[1.03] transition-all bg-white flex-shrink-0">
+                        <img src={url} alt={`Imagen ${idx + 1}`} className="w-full h-full object-cover" />
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
             <div className="mt-5 pt-3 border-t border-gray-100 flex justify-end">
               <button
